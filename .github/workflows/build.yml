@@ -41,48 +41,42 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/signing"
 
+          STORE_PASSWORD=$(openssl rand -hex 32)
+          KEY_PASSWORD=$(openssl rand -hex 32)
+
           keytool -genkeypair \
             -alias universal-browser-dev \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
             -keystore "$RUNNER_TEMP/signing/test.jks" \
-            -storepass "$GITHUB_RUN_ID" \
-            -keypass "$GITHUB_RUN_ID" \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
             -dname "CN=Universal Browser, O=Universal Browser, C=NG"
 
-          cat > "$RUNNER_TEMP/signing/local.properties" <<EOF
-          keyAlias=universal-browser-dev
-          keyPassword=$GITHUB_RUN_ID
-          storePassword=$GITHUB_RUN_ID
-          EOF
+          printf 'keyAlias=universal-browser-dev\nkeyPassword=%s\nstorePassword=%s\n' \
+            "$KEY_PASSWORD" "$STORE_PASSWORD" \
+            > "$RUNNER_TEMP/signing/local.properties"
 
-          echo "LOCAL_TEST_JKS<<EOF" >> "$GITHUB_ENV"
-          base64 -w 0 "$RUNNER_TEMP/signing/local.properties" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
-
-          echo "STORE_TEST_JKS<<EOF" >> "$GITHUB_ENV"
-          base64 -w 0 "$RUNNER_TEMP/signing/test.jks" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+          echo "LOCAL_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/local.properties")" >> "$GITHUB_ENV"
+          echo "STORE_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/test.jks")" >> "$GITHUB_ENV"
 
       - name: Build
         env:
           DEBIAN_FRONTEND: noninteractive
-          LOCAL_TEST_JKS: ${{ env.LOCAL_TEST_JKS }}
-          STORE_TEST_JKS: ${{ env.STORE_TEST_JKS }}
         run: |
           ./build.sh
 
-      - name: Collect APK
+      - name: Collect APKs
         run: |
           VERSION=$(find chromium/src/out/release -name '*arm64-v8a.apk' | sed 's/.*\///;s/-arm64-v8a.apk$//')
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
           mv "$(find chromium/src/out/release -name '*arm64-v8a.apk' | head -n1)" \
-             "$VERSION-${{ env.unix_time }}-arm64-v8a.apk"
+            "$VERSION-${{ env.unix_time }}-arm64-v8a.apk"
 
           mv "$(find chromium/src/out/release -name '*armeabi-v7a.apk' | head -n1)" \
-             "$VERSION-${{ env.unix_time }}-armeabi-v7a.apk"
+            "$VERSION-${{ env.unix_time }}-armeabi-v7a.apk"
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
