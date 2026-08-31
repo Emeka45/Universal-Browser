@@ -1,15 +1,7 @@
-name: Build
+name: Build Universal Browser
 
 on:
   workflow_dispatch:
-    inputs:
-      runner:
-        description: 'Runner'
-        required: true
-        type: string
-        default: 'ubuntu-latest'  
-  schedule:
-    - cron: '0 0 */16 * *'
 
 permissions:
   contents: write
@@ -18,62 +10,84 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner || 'self-hosted' }}
+    runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
         with:
           submodules: true
-      
-      - name: Update 
+
+      - name: Update Titanium
         run: |
           cd vanadium
           git fetch --tags
-          git checkout $(git tag | sort -V | tail -n1)
+          git checkout "$(git tag | sort -V | tail -n1)"
           cd ..
           git add vanadium
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           if ! git diff --staged --quiet; then
-            git commit -am "update"
+            git commit -m "update Titanium"
             git push
           fi
 
-      - name: Set ENV
-        run: | 
+      - name: Set environment
+        run: |
           chmod +x *.sh
-          echo "unix_time=$(date +%s)" >> $GITHUB_ENV
-    
+          echo "unix_time=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Generate temporary signing credentials
+        run: |
+          mkdir -p "$RUNNER_TEMP/signing"
+
+          keytool -genkeypair \
+            -alias universal-browser-dev \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -keystore "$RUNNER_TEMP/signing/test.jks" \
+            -storepass "$GITHUB_RUN_ID" \
+            -keypass "$GITHUB_RUN_ID" \
+            -dname "CN=Universal Browser, O=Universal Browser, C=NG"
+
+          cat > "$RUNNER_TEMP/signing/local.properties" <<EOF
+          keyAlias=universal-browser-dev
+          keyPassword=$GITHUB_RUN_ID
+          storePassword=$GITHUB_RUN_ID
+          EOF
+
+          echo "LOCAL_TEST_JKS<<EOF" >> "$GITHUB_ENV"
+          base64 -w 0 "$RUNNER_TEMP/signing/local.properties" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+          echo "STORE_TEST_JKS<<EOF" >> "$GITHUB_ENV"
+          base64 -w 0 "$RUNNER_TEMP/signing/test.jks" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
       - name: Build
         env:
-            DEBIAN_FRONTEND: noninteractive
-            LOCAL_TEST_JKS: ${{ secrets.LOCAL_TEST_JKS }}
-            STORE_TEST_JKS: ${{ secrets.STORE_TEST_JKS }}
+          DEBIAN_FRONTEND: noninteractive
+          LOCAL_TEST_JKS: ${{ env.LOCAL_TEST_JKS }}
+          STORE_TEST_JKS: ${{ env.STORE_TEST_JKS }}
         run: |
           ./build.sh
 
-      - name: Set
+      - name: Collect APK
         run: |
-          export VERSION=$(find chromium/src/out/release -name '*arm64-v8a.apk' | sed 's/.*\///;s/\-arm64-v8a.apk$//')
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          mv $(find chromium/src/out/release -name '*arm64-v8a.aab') $VERSION-${{ env.unix_time }}-arm64-v8a.aab
-          mv $(find chromium/src/out/release -name '*arm64-v8a.apk') $VERSION-${{ env.unix_time }}-arm64-v8a.apk
-          mv $(find chromium/src/out/release -name '*armeabi-v7a.apk') $VERSION-${{ env.unix_time }}-armeabi-v7a.apk
+          VERSION=$(find chromium/src/out/release -name '*arm64-v8a.apk' | sed 's/.*\///;s/-arm64-v8a.apk$//')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Publish
-        uses: softprops/action-gh-release@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: v${{ env.VERSION }}
-          tag_name: v${{ env.VERSION }}
-          files: |
-            ${{ env.VERSION }}-${{ env.unix_time }}-arm64-v8a.aab
-            ${{ env.VERSION }}-${{ env.unix_time }}-arm64-v8a.apk
-            ${{ env.VERSION }}-${{ env.unix_time }}-armeabi-v7a.apk
+          mv "$(find chromium/src/out/release -name '*arm64-v8a.apk' | head -n1)" \
+             "$VERSION-${{ env.unix_time }}-arm64-v8a.apk"
 
-      - name: Attest
-        uses: actions/attest-build-provenance@v4
+          mv "$(find chromium/src/out/release -name '*armeabi-v7a.apk' | head -n1)" \
+             "$VERSION-${{ env.unix_time }}-armeabi-v7a.apk"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
         with:
-          subject-path: |
-            ${{ env.VERSION }}-${{ env.unix_time }}-arm64-v8a.aab
-            ${{ env.VERSION }}-${{ env.unix_time }}-arm64-v8a.apk
-            ${{ env.VERSION }}-${{ env.unix_time }}-armeabi-v7a.apk
+          name: universal-browser-apks
+          path: |
+            *-arm64-v8a.apk
+            *-armeabi-v7a.apk
