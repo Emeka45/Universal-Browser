@@ -66,8 +66,11 @@ jobs:
             "$STORE_PASSWORD" \
             > "$RUNNER_TEMP/signing/local.properties"
 
-          echo "LOCAL_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/local.properties")" >> "$GITHUB_ENV"
-          echo "STORE_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/test.jks")" >> "$GITHUB_ENV"
+          LOCAL_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/local.properties")
+          STORE_TEST_JKS=$(base64 -w 0 "$RUNNER_TEMP/signing/test.jks")
+
+          echo "LOCAL_TEST_JKS=$LOCAL_TEST_JKS" >> "$GITHUB_ENV"
+          echo "STORE_TEST_JKS=$STORE_TEST_JKS" >> "$GITHUB_ENV"
 
       - name: Build ARM64 APK
         env:
