@@ -7,11 +7,27 @@ export VERSION=$(grep -m1 -o '[0-9]\+\(\.[0-9]\+\)\{3\}' vanadium/args.gn)
 export CHROMIUM_SOURCE=https://chromium.googlesource.com/chromium/src.git
 export DEBIAN_FRONTEND=noninteractive
 
+echo "========================================"
+echo "Universal Browser ARM64 Build"
+echo "Chromium version: $VERSION"
+echo "========================================"
+
 sudo apt-get update
-sudo apt-get install -y sudo lsb-release file nano git curl python3 python3-pillow imagemagick librsvg2-bin
-sudo dpkg --add-architecture i386
-sudo apt-get update
-sudo apt-get install -y libgcc-s1:i386
+
+sudo apt-get install -y \
+    sudo \
+    lsb-release \
+    file \
+    nano \
+    git \
+    curl \
+    python3 \
+    python3-pillow \
+    imagemagick \
+    librsvg2-bin
+
+# ARM64-only build.
+# No i386 architecture or ARM32 host dependencies.
 
 if [ ! -d "depot_tools" ]; then
     git clone --depth 1 https://chromium.googlesource.com/chromium/tools/depot_tools.git
@@ -20,6 +36,7 @@ fi
 export PATH="$PWD/depot_tools:$PATH"
 
 mkdir -p chromium/src/out/Default
+
 cd chromium/src
 
 git init
@@ -28,10 +45,16 @@ if ! git remote get-url origin >/dev/null 2>&1; then
     git remote add origin "$CHROMIUM_SOURCE"
 fi
 
+echo "========================================"
+echo "Fetching Chromium $VERSION"
+echo "========================================"
+
 git fetch --depth 1 "$CHROMIUM_SOURCE" +refs/tags/$VERSION:chromium_$VERSION
 git checkout "$VERSION"
 
 cp "$SCRIPT_DIR/.gclient" ../.gclient
+
+# Remove incompatible Titanium patches.
 
 rm -rf "$SCRIPT_DIR/vanadium/patches/"*trichrome-{apk-build-targets,browser-apk-targets}.patch
 rm -rf "$SCRIPT_DIR/vanadium/patches/"*{detailed,supported}-language*.patch
@@ -43,32 +66,65 @@ replace "$SCRIPT_DIR/vanadium/patches" "VANADIUM" "TITANIUM"
 replace "$SCRIPT_DIR/vanadium/patches" "Vanadium" "Titanium"
 replace "$SCRIPT_DIR/vanadium/patches" "vanadium" "titanium"
 
+echo "========================================"
+echo "Applying Titanium patches"
+echo "========================================"
+
 git am --whitespace=nowarn --keep-non-patch \
     "$SCRIPT_DIR/vanadium/patches/"*.patch
+
+echo "========================================"
+echo "Synchronizing Chromium dependencies"
+echo "========================================"
 
 gclient sync -D --no-history --nohooks
 gclient runhooks
 
+echo "========================================"
+echo "Installing Chromium build dependencies"
+echo "========================================"
+
 ./build/install-build-deps.sh --no-prompt
 
+echo "========================================"
+echo "Applying Universal Browser patches"
+echo "========================================"
+
 source "$SCRIPT_DIR/patch.sh"
+
+echo "========================================"
+echo "Preparing ARM64 GN configuration"
+echo "========================================"
 
 cp "$SCRIPT_DIR/args.gn" out/Default/args.gn
 
 cat >> out/Default/args.gn <<'EOF'
 
+# Universal Browser ARM64-only build
 target_os = "android"
 target_cpu = "arm64"
 
+# Lightweight/faster build
 is_component_build = false
 symbol_level = 0
+blink_symbol_level = 0
+v8_symbol_level = 0
 android_static_analysis = "off"
+
+# Release build
+is_debug = false
+is_official_build = true
 
 EOF
 
+echo "========================================"
+echo "Generating ARM64 build files"
+echo "========================================"
+
 gn gen out/Default
 
-mkdir -p out/tmp out/release
+mkdir -p out/tmp
+mkdir -p out/release
 
 echo "========================================"
 echo "Building ARM64 APK"
@@ -76,12 +132,19 @@ echo "========================================"
 
 autoninja -C out/Default chrome_public_apk
 
+echo "========================================"
+echo "Locating ARM64 APK"
+echo "========================================"
+
 APK=$(find out/Default/apks -type f -name 'Chrome*.apk' | head -n 1)
 
 if [ -z "$APK" ]; then
     echo "ERROR: ARM64 APK was not produced."
     exit 1
 fi
+
+echo "ARM64 APK found:"
+echo "$APK"
 
 mv "$APK" "out/tmp/$VERSION-arm64-v8a.apk"
 
