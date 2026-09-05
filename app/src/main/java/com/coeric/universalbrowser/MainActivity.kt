@@ -101,7 +101,7 @@ class MainActivity : Activity() {
 
     private fun installMediaDetector() {
         getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept(
-            { extension -> session.getWebExtensionController().setMessageDelegate(extension, mediaMessageDelegate, NATIVE_APP_NAME) },
+            { extension -> extension?.let { session.getWebExtensionController().setMessageDelegate(it, mediaMessageDelegate, NATIVE_APP_NAME) } },
             { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
         )
     }
@@ -151,7 +151,6 @@ class MainActivity : Activity() {
             val cookies = CookieManager.getInstance().getCookie(url)
             if (!cookies.isNullOrBlank()) request.addRequestHeader("Cookie", cookies)
             if (currentUrl.isNotBlank()) request.addRequestHeader("Referer", currentUrl)
-            request.addRequestHeader("User-Agent", getRuntimeUserAgent())
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             manager.enqueue(request)
             toast("Download started — check Downloads for progress.")
@@ -160,7 +159,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun getRuntimeUserAgent(): String = "Mozilla/5.0 (Linux; Android) UniversalBrowser"
 
     private fun buildMediaFilename(url: String, title: String): String {
         val pathName = try { Uri.parse(url).lastPathSegment.orEmpty() } catch (_: Throwable) { "" }
