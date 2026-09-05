@@ -1,0 +1,98 @@
+name: Add Extension Web Stores
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Add web store hub and navigation
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/coeric/universalbrowser/MainActivity.kt")
+          text = path.read_text(encoding="utf-8")
+
+          card_old = 'content.addView(featureCard("Extensions", "Install and manage Firefox + Chrome-compatible WebExtensions", "▣") { showExtensionManagerPage() })\n'
+          card_new = card_old + '        content.addView(featureCard("Web Stores", "Firefox • Chrome • Edge • Opera extension stores", "◎") { showWebStores() }, featureParams())\n'
+          if 'featureCard("Web Stores"' not in text:
+              if card_old not in text:
+                  raise SystemExit("Extensions feature card anchor not found")
+              text = text.replace(card_old, card_new, 1)
+
+          menu_old = 'val items = arrayOf("Home", "Extensions", "Check Chrome extension", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")'
+          menu_new = 'val items = arrayOf("Home", "Extensions", "Web Stores", "Check Chrome extension", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")'
+          if menu_old in text:
+              text = text.replace(menu_old, menu_new, 1)
+
+          case_old = '''                1 -> showExtensionManagerPage()\n                2 -> openExtensionPicker()\n                3 -> navigate("https://addons.mozilla.org/android/")\n                4 -> showMediaDownloadInfo()\n                5 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()\n                6 -> showAbout()'''
+          case_new = '''                1 -> showExtensionManagerPage()\n                2 -> showWebStores()\n                3 -> openExtensionPicker()\n                4 -> navigate("https://addons.mozilla.org/android/")\n                5 -> showMediaDownloadInfo()\n                6 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()\n                7 -> showAbout()'''
+          if case_old in text:
+              text = text.replace(case_old, case_new, 1)
+
+          anchor = '    private fun showExtensionManagerPage() {'
+          if 'private fun showWebStores()' not in text:
+              if anchor not in text:
+                  raise SystemExit("Extension manager anchor not found")
+              method = '''    private fun showWebStores() {\n        val stores = arrayOf(\n            "Firefox Add-ons (AMO)",\n            "Chrome Web Store",\n            "Microsoft Edge Add-ons",\n            "Opera Add-ons",\n            "Install local .XPI / .CRX / ZIP"\n        )\n        AlertDialog.Builder(this)\n            .setTitle("Extension Web Stores")\n            .setMessage("Browse official extension catalogs from inside Universal Browser. Installation is offered only when GeckoView accepts the package and its signing/compatibility requirements are satisfied.")\n            .setItems(stores) { _, which ->\n                when (which) {\n                    0 -> navigate("https://addons.mozilla.org/android/")\n                    1 -> navigate("https://chromewebstore.google.com/")\n                    2 -> navigate("https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home")\n                    3 -> navigate("https://addons.opera.com/en/extensions/")\n                    4 -> openExtensionPicker()\n                }\n            }\n            .setNegativeButton("Close", null)\n            .show()\n    }\n\n'''
+              text = text.replace(anchor, method + anchor, 1)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Verify source changes
+        run: |
+          grep -n 'Web Stores' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -n 'chromewebstore.google.com' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -n 'microsoftedge.microsoft.com/addons' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -n 'addons.opera.com' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+
+      - name: Commit browser web store upgrade
+        run: |
+          git config user.name "Universal Browser Builder"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "Web store upgrade already present"
+          else
+            git commit -m "Add Firefox Chrome Edge and Opera web stores"
+            git push origin HEAD:main
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 9.6.0
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Build Redmi A1 ARMv7 APK
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify generated APK
+        run: |
+          set -e
+          apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
+          test "$apk_count" -eq 1
+          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
+          echo "APK: $apk"
+          du -h "$apk"
+
+      - name: Upload Redmi A1 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-browser-webstores-redmi-a1-armv7
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
