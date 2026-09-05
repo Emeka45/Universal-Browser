@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -66,7 +65,7 @@ class MainActivity : Activity() {
         }
         root.addView(progress, LinearLayout.LayoutParams(-1, 3.dp()))
 
-        browserView = GeckoView(this).apply { setSession(session) }
+        browserView = GeckoView(this).apply { setSession(this@MainActivity.session) }
         homePanel = buildHomePanel()
         root.addView(homePanel, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(browserView, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -134,7 +133,7 @@ class MainActivity : Activity() {
         addressBar = EditText(this).apply {
             hint = "Search or enter address"
             textSize = 15f
-            singleLine = true
+            setSingleLine(true)
             setTextColor(ink)
             setHintTextColor(Color.rgb(150, 148, 166))
             setPadding(14.dp(), 0, 14.dp(), 0)
@@ -189,7 +188,7 @@ class MainActivity : Activity() {
         val search = EditText(this).apply {
             hint = "What do you want to find?"
             textSize = 16f
-            singleLine = true
+            setSingleLine(true)
             setPadding(18.dp(), 0, 18.dp(), 0)
             setTextColor(ink)
             background = rounded(Color.WHITE, 0, 0, 0, 18.dp())
@@ -401,6 +400,7 @@ class MainActivity : Activity() {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     private fun Int.dp() = (this * resources.displayMetrics.density).toInt()
 
+    @Deprecated("Deprecated in Android API 33")
     override fun onBackPressed() {
         if (browserView.visibility == View.VISIBLE && canGoBack) session.goBack() else super.onBackPressed()
     }
