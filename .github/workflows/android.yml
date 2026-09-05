@@ -30,15 +30,25 @@ jobs:
       - name: Show Gradle version
         run: gradle --version
 
-      - name: Build split debug APKs
+      - name: Build Redmi A1 ARMv7 debug APK
         run: gradle assembleDebug --no-daemon --stacktrace --info
 
-      - name: List generated APKs
+      - name: Verify generated APK architecture
+        run: |
+          set -e
+          apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
+          echo "APK count: $apk_count"
+          test "$apk_count" -eq 1
+          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
+          echo "APK: $apk"
+          du -h "$apk"
+
+      - name: List generated APK
         run: find app/build/outputs/apk -type f -name '*.apk' -print -exec du -h {} \;
 
-      - name: Upload split debug APKs
+      - name: Upload Redmi A1 APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-debug-split
+          name: universal-browser-redmi-a1-armv7
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
