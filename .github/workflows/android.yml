@@ -30,11 +30,15 @@ jobs:
       - name: Show Gradle version
         run: gradle --version
 
-      - name: Build debug APK
+      - name: Build split debug APKs
         run: gradle assembleDebug --no-daemon --stacktrace --info
 
-      - name: Upload debug APK
+      - name: List generated APKs
+        run: find app/build/outputs/apk -type f -name '*.apk' -print -exec du -h {} \;
+
+      - name: Upload split debug APKs
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-debug
+          name: universal-browser-debug-split
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
