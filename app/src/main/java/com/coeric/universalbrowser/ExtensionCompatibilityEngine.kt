@@ -12,6 +12,15 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
+/**
+ * Inspects a WebExtension package before GeckoView sees it.
+ *
+ * Important: this is a compatibility analyser, not a fake Chrome-runtime shim.
+ * GeckoView executes Firefox/WebExtension APIs and still enforces Mozilla's
+ * signing policy for normal installed XPI packages. Chrome APIs that do not
+ * have a Gecko equivalent are therefore reported instead of being silently
+ * rewritten into broken behaviour.
+ */
 object ExtensionCompatibilityEngine {
     enum class Level { FULL, HIGH, PARTIAL, UNSUPPORTED }
 
@@ -28,58 +37,117 @@ object ExtensionCompatibilityEngine {
 
     fun analyzeAndPrepare(context: Context, source: Uri): Report {
         val input = copyToCache(context, source, "extension-input")
-        val zipFile = if (looksLikeZip(input)) input else extractCrxToZip(context, input)
+        val sourceWasZip = looksLikeZip(input)
+        val zipFile = if (sourceWasZip) input else extractCrxToZip(context, input)
         val manifest = readManifest(zipFile)
             ?: throw IllegalArgumentException("This package does not contain a valid manifest.json")
+
         val name = manifest.optString("name").ifBlank { "Unnamed extension" }
         val version = manifest.optString("version").ifBlank { "unknown" }
         val mv = manifest.optInt("manifest_version", 2)
         val reasons = mutableListOf<String>()
         var level = Level.FULL
         var transformed = false
+
         val permissions = jsonStringArray(manifest.optJSONArray("permissions"))
         val optionalPermissions = jsonStringArray(manifest.optJSONArray("optional_permissions"))
-        val hardUnsupported = setOf("debugger", "declarativeContent", "sidePanel")
-        val requestedHard = (permissions + optionalPermissions).filter { it in hardUnsupported }
+        val allPermissions = permissions + optionalPermissions
+
+        // These are intentionally hard failures. Pretending that these APIs
+        // work would be worse than refusing the package before installation.
+        val hardUnsupported = setOf(
+            "debugger",
+            "declarativeContent",
+            "sidePanel"
+        )
+        val requestedHard = allPermissions.filter { it in hardUnsupported }.distinct()
         if (requestedHard.isNotEmpty()) {
             level = Level.UNSUPPORTED
-            reasons += "Uses Chrome APIs with no Gecko equivalent: ${requestedHard.joinToString(", ")}."
+            reasons += "Uses Chrome APIs with no safe Gecko equivalent: ${requestedHard.joinToString(", ")}."
         }
-        if (manifest.has("side_panel")) {
+
+        if (manifest.has("side_panel") || manifest.has("sidePanel")) {
             level = worse(level, Level.PARTIAL)
-            reasons += "Chrome side panel is not portable to Gecko and needs an alternative UI."
+            reasons += "Chrome side panel is not portable to Gecko; the extension needs an alternative UI."
         }
         if (manifest.has("externally_connectable")) {
             level = worse(level, Level.PARTIAL)
-            reasons += "externally_connectable is not supported by Firefox/Gecko for web-page messaging."
+            reasons += "externally_connectable is not a portable Firefox/Gecko page-messaging feature."
         }
-        if (manifest.has("devtools_page")) {
+        if (manifest.has("devtools_page") || manifest.has("devtools_panel")) {
             level = worse(level, Level.PARTIAL)
-            reasons += "DevTools pages require a browser-specific implementation."
+            reasons += "DevTools integration is browser-specific and may require a Gecko-specific implementation."
         }
+        if (manifest.has("chrome_settings_overrides")) {
+            level = worse(level, Level.PARTIAL)
+            reasons += "chrome_settings_overrides is Chrome-specific and will not be applied by Gecko."
+        }
+        if (manifest.has("chrome_url_overrides")) {
+            level = worse(level, Level.PARTIAL)
+            reasons += "chrome_url_overrides is Chrome-specific; Firefox uses different browser-page mechanisms."
+        }
+
         val background = manifest.optJSONObject("background")
-        if (mv >= 3 && background != null && background.has("service_worker") && !background.has("scripts")) {
-            val worker = background.optString("service_worker").trim()
-            if (worker.isNotEmpty()) {
-                background.put("scripts", JSONArray().put(worker))
-                manifest.put("background", background)
-                transformed = true
-                level = worse(level, Level.HIGH)
-                reasons += "Added a Firefox/Gecko background-script fallback for the MV3 service worker."
+        if (mv >= 3 && background?.has("service_worker") == true && !background.has("scripts")) {
+            // Do NOT convert a Chrome MV3 service worker into a Firefox
+            // background script. The execution model is different and such a
+            // rewrite would make the package look installable while silently
+            // breaking its event lifecycle.
+            level = worse(level, Level.PARTIAL)
+            reasons += "MV3 service_worker detected. Gecko compatibility requires a real Firefox background-script conversion; no unsafe automatic rewrite was applied."
+        }
+
+        if (mv >= 3 && manifest.optJSONArray("web_accessible_resources") != null) {
+            reasons += "Manifest V3 web-accessible resources were left untouched; Firefox compatibility must be validated by Gecko."
+        }
+
+        if (manifest.has("minimum_chrome_version")) {
+            level = worse(level, Level.PARTIAL)
+            reasons += "minimum_chrome_version is informational here; Gecko will validate actual runtime/API compatibility."
+        }
+
+        val browserSpecific = manifest.optJSONObject("browser_specific_settings")
+        if (browserSpecific != null) {
+            val gecko = browserSpecific.optJSONObject("gecko")
+            if (gecko?.has("id") == true) {
+                reasons += "Firefox browser_specific_settings.gecko.id is present."
             }
         }
-        if (mv >= 3 && manifest.optJSONArray("web_accessible_resources") != null) {
-            reasons += "Manifest V3 web-accessible resources were preserved without unsafe conversion."
+
+        if (level == Level.FULL) {
+            level = if (mv >= 3) Level.HIGH else Level.FULL
+            reasons += if (mv >= 3) {
+                "No known hard-blocking Chrome-only API was detected; Gecko must still validate the MV3 package."
+            } else {
+                "Manifest uses WebExtension features that GeckoView can normally evaluate."
+            }
         }
-        if (level == Level.FULL) reasons += "Manifest uses WebExtension features that GeckoView can normally evaluate."
-        if (source.toString().lowercase().endsWith(".crx")) reasons += "Chrome CRX container was unpacked for WebExtension inspection."
-        reasons += "Final installation is still subject to GeckoView's Mozilla-signing requirement."
-        val prepared = if (transformed || !looksLikeZip(input)) {
+
+        if (!sourceWasZip) {
+            reasons += "Chrome CRX container was unpacked for WebExtension inspection."
+        }
+        reasons += "Normal GeckoView package installation still requires Mozilla signing."
+
+        // Only rewrite the package when the container itself had to be
+        // converted from CRX to ZIP/XPI. We never rewrite manifest semantics.
+        val prepared = if (!sourceWasZip) {
             val out = File(context.cacheDir, "universal-prepared-${System.currentTimeMillis()}.xpi")
-            rewritePackage(zipFile, out, manifest)
+            copyZip(zipFile, out)
             out
-        } else zipFile
-        return Report(name, version, mv, if (looksLikeZip(input)) "ZIP/XPI" else "CRX", level, reasons, prepared, transformed)
+        } else {
+            zipFile
+        }
+
+        return Report(
+            name = name,
+            version = version,
+            manifestVersion = mv,
+            sourceFormat = if (sourceWasZip) "ZIP/XPI" else "CRX",
+            level = level,
+            reasons = reasons,
+            preparedFile = prepared,
+            transformed = transformed
+        )
     }
 
     private fun worse(a: Level, b: Level): Level {
@@ -109,27 +177,9 @@ object ExtensionCompatibilityEngine {
         return null
     }
 
-    private fun rewritePackage(source: File, destination: File, manifest: JSONObject) {
-        ZipInputStream(FileInputStream(source)).use { zis ->
-            ZipOutputStream(FileOutputStream(destination)).use { zos ->
-                var replaced = false
-                while (true) {
-                    val entry = zis.nextEntry ?: break
-                    if (entry.name.equals("manifest.json", ignoreCase = true)) {
-                        zos.putNextEntry(ZipEntry("manifest.json"))
-                        zos.write(manifest.toString(2).toByteArray(StandardCharsets.UTF_8))
-                        zos.closeEntry()
-                        replaced = true
-                    } else {
-                        val copy = ZipEntry(entry.name)
-                        copy.time = entry.time
-                        zos.putNextEntry(copy)
-                        zis.copyTo(zos)
-                        zos.closeEntry()
-                    }
-                }
-                if (!replaced) throw IllegalArgumentException("manifest.json could not be rewritten")
-            }
+    private fun copyZip(source: File, destination: File) {
+        FileInputStream(source).use { input ->
+            FileOutputStream(destination).use { output -> input.copyTo(output) }
         }
     }
 
@@ -155,7 +205,6 @@ object ExtensionCompatibilityEngine {
             if (input.read(header) != 12 || String(header, 0, 4, StandardCharsets.US_ASCII) != "Cr24") {
                 throw IllegalArgumentException("Unsupported extension container. Select a .crx, .xpi or ZIP WebExtension package.")
             }
-            // Keep CRX header arithmetic explicitly Long-safe when calculating the ZIP offset.
             val version = littleEndianInt(header, 4)
             val zipOffset = when (version) {
                 2 -> {
@@ -170,6 +219,7 @@ object ExtensionCompatibilityEngine {
                 }
                 else -> throw IllegalArgumentException("Unsupported CRX version: $version")
             }
+
             FileInputStream(crx).use { full ->
                 if (full.skip(zipOffset) != zipOffset) throw IllegalArgumentException("Invalid CRX package")
                 val out = File(context.cacheDir, "universal-crx-${System.currentTimeMillis()}.zip")
