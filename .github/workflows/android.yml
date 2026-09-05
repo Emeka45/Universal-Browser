@@ -5,50 +5,55 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: universal-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 9.6.0
-        uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '9.6.0'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Check runner disk space
-        run: df -h
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
 
-      - name: Show Gradle version
-        run: gradle --version
+      - name: Verify Gradle wrapper
+        run: ./gradlew --version
 
-      - name: Build Redmi A1 ARMv7 debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace --info
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify generated APK architecture
+      - name: Verify generated APK
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
           echo "APK count: $apk_count"
           test "$apk_count" -eq 1
           apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
           echo "APK: $apk"
+          file "$apk"
           du -h "$apk"
 
-      - name: List generated APK
-        run: find app/build/outputs/apk -type f -name '*.apk' -print -exec du -h {} \;
-
-      - name: Upload Redmi A1 APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-redmi-a1-armv7
+          name: universal-browser-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
