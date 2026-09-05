@@ -46,6 +46,7 @@ class MainActivity : Activity() {
         toolbar.addView(button("↻") { session.reload() })
         toolbar.addView(button("U") { loadHome() })
         toolbar.addView(button("E") { openExtensionPicker() })
+        toolbar.addView(button("≡") { showExtensionManager() })
 
         addressBar = EditText(this).apply {
             hint = "Search or enter address"
@@ -121,6 +122,76 @@ class MainActivity : Activity() {
         }, REQUEST_EXTENSION)
     }
 
+    private fun showExtensionManager() {
+        getRuntime().webExtensionController.list().accept(
+            { extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } },
+            { error -> runOnUiThread { Toast.makeText(this, "Could not load extensions: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() } }
+        )
+    }
+
+    private fun renderExtensionManager(extensions: List<WebExtension>) {
+        if (extensions.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Extensions")
+                .setMessage("No extensions installed yet.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 8)
+        }
+        extensions.forEach { extension ->
+            val name = extension.metaData.name.takeIf { it.isNotBlank() } ?: extension.id
+            val enabled = extension.metaData.enabled
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+            val label = TextView(this).apply {
+                text = "$name\n${if (enabled) "Enabled" else "Disabled"}"
+                textSize = 16f
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            row.addView(label)
+            row.addView(button(if (enabled) "OFF" else "ON") {
+                val controller = getRuntime().webExtensionController
+                val result = if (enabled) {
+                    controller.disable(extension, WebExtensionController.EnableSource.USER)
+                } else {
+                    controller.enable(extension, WebExtensionController.EnableSource.USER)
+                }
+                result.accept(
+                    { showExtensionManager() },
+                    { error -> Toast.makeText(this, "Extension change failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                )
+            })
+            row.addView(button("×") {
+                AlertDialog.Builder(this)
+                    .setTitle("Remove $name?")
+                    .setMessage("This will uninstall the extension and remove its stored data.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Remove") { _, _ ->
+                        getRuntime().webExtensionController.uninstall(extension).accept(
+                            { showExtensionManager() },
+                            { error -> Toast.makeText(this, "Remove failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                        )
+                    }
+                    .show()
+            })
+            container.addView(row)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Extensions")
+            .setView(container)
+            .setPositiveButton("Done", null)
+            .show()
+    }
+
     @Deprecated("Deprecated in Android API 33")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -185,7 +256,7 @@ class MainActivity : Activity() {
 
     private fun button(label: String, action: () -> Unit) = TextView(this).apply {
         text = label
-        textSize = if (label == "U") 18f else 24f
+        textSize = if (label == "U") 18f else 22f
         gravity = Gravity.CENTER
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(44.dp(), 48.dp())
