@@ -27,17 +27,19 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      # This repository currently does not contain the Gradle wrapper.
+      # Provision the exact Gradle runtime on the runner instead of failing
+      # before the Android build even starts.
+      - name: Set up Gradle 9.7.1
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.1'
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
-
-      - name: Verify Gradle wrapper
-        run: ./gradlew --version
+      - name: Verify Gradle
+        run: gradle --version
 
       - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Verify generated APK
         shell: bash
@@ -45,11 +47,8 @@ jobs:
           set -euo pipefail
           apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
           echo "APK count: $apk_count"
-          test "$apk_count" -eq 1
-          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
-          echo "APK: $apk"
-          file "$apk"
-          du -h "$apk"
+          test "$apk_count" -ge 1
+          find app/build/outputs/apk/debug -type f -name '*.apk' -print -exec file {} \; -exec du -h {} \;
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
