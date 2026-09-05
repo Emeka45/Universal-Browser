@@ -197,6 +197,7 @@ class MainActivity : Activity() {
         content.addView(quick)
         content.addView(sectionTitle("Your browser", "Everything you need, without the clutter"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 22.dp(); bottomMargin = 10.dp() })
         content.addView(featureCard("Extensions", "Install and manage Firefox + Chrome-compatible WebExtensions", "▣") { showExtensionManagerPage() })
+        content.addView(featureCard("Web Stores", "Firefox • Chrome • Edge • Opera extension stores", "◎") { showWebStores() }, featureParams())
         content.addView(featureCard("Add-ons", "Browse signed Firefox-compatible extensions", "+") { navigate("https://addons.mozilla.org/android/") }, featureParams())
         content.addView(featureCard("Media downloads", "Play supported media, then download it in one tap", "↓") { showMediaDownloadInfo() }, featureParams())
         content.addView(featureCard("Private by design", "A lightweight Gecko browser for Android Go devices", "◈") { showAbout() }, featureParams())
@@ -256,18 +257,43 @@ class MainActivity : Activity() {
     }
 
     private fun showBrowserMenu() {
-        val items = arrayOf("Home", "Extensions", "Check Chrome extension", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")
+        val items = arrayOf("Home", "Extensions", "Web Stores", "Check Chrome extension", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")
         AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which ->
             when (which) {
                 0 -> showHome()
                 1 -> showExtensionManagerPage()
-                2 -> openExtensionPicker()
-                3 -> navigate("https://addons.mozilla.org/android/")
-                4 -> showMediaDownloadInfo()
-                5 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()
-                6 -> showAbout()
+                2 -> showWebStores()
+                3 -> openExtensionPicker()
+                4 -> navigate("https://addons.mozilla.org/android/")
+                5 -> showMediaDownloadInfo()
+                6 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()
+                7 -> showAbout()
             }
         }.show()
+    }
+
+    private fun showWebStores() {
+        val stores = arrayOf(
+            "Firefox Add-ons (AMO)",
+            "Chrome Web Store",
+            "Microsoft Edge Add-ons",
+            "Opera Add-ons",
+            "Install local .XPI / .CRX / ZIP"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Extension Web Stores")
+            .setMessage("Browse official extension catalogs from inside Universal Browser. Installation is offered only when GeckoView accepts the package and its signing/compatibility requirements are satisfied.")
+            .setItems(stores) { _, which ->
+                when (which) {
+                    0 -> navigate("https://addons.mozilla.org/android/")
+                    1 -> navigate("https://chromewebstore.google.com/")
+                    2 -> navigate("https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home")
+                    3 -> navigate("https://addons.opera.com/en/extensions/")
+                    4 -> openExtensionPicker()
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun showExtensionManagerPage() {
