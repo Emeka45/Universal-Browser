@@ -37,6 +37,7 @@ jobs:
       - name: Verify Gradle
         run: gradle --version
 
+      # Comprehensive browser pass: keep this build as the canonical validation path.
       - name: Apply comprehensive browser upgrade
         run: python3 tools/mega_upgrade.py
 
