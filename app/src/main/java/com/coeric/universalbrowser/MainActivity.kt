@@ -2,45 +2,104 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.os.Bundle
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.view.Gravity
+import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
+import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoView
 
 class MainActivity : Activity() {
-    private lateinit var webView: WebView
+    private lateinit var session: GeckoSession
+    private lateinit var addressBar: EditText
+    private lateinit var progress: ProgressBar
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        webView = WebView(this)
-        setContentView(webView)
-        webView.webViewClient = WebViewClient()
-        webView.webChromeClient = WebChromeClient()
-        webView.settings.apply {
-            javaScriptEnabled = true
-            domStorageEnabled = true
-            databaseEnabled = true
-            cacheMode = WebSettings.LOAD_DEFAULT
-            builtInZoomControls = false
-            displayZoomControls = false
-            mediaPlaybackRequiresUserGesture = true
+        val runtime = GeckoRuntime.create(this)
+        session = GeckoSession()
+        session.open(runtime)
+
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(8, 6, 8, 3)
         }
-        if (savedInstanceState == null) webView.loadUrl("https://www.google.com")
-        else webView.restoreState(savedInstanceState)
+
+        toolbar.addView(button("‹") { if (session.canGoBack) session.goBack() })
+        toolbar.addView(button("›") { if (session.canGoForward) session.goForward() })
+        toolbar.addView(button("↻") { session.reload() })
+        toolbar.addView(button("U") { loadHome() })
+
+        addressBar = EditText(this).apply {
+            hint = "Search or enter address"
+            singleLine = true
+            setPadding(16, 0, 16, 0)
+            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
+        }
+        toolbar.addView(addressBar, LinearLayout.LayoutParams(0, 48.dp(), 1f))
+
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            visibility = View.GONE
+        }
+
+        val geckoView = GeckoView(this)
+        geckoView.setSession(session)
+        root.addView(toolbar)
+        root.addView(progress, LinearLayout.LayoutParams(-1, 3.dp()))
+        root.addView(geckoView, LinearLayout.LayoutParams(-1, 0, 1f))
+        setContentView(root)
+
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onProgressChange(session: GeckoSession, value: Int) {
+                progress.progress = value
+                progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE
+            }
+        }
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(
+                session: GeckoSession,
+                url: String?,
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>
+            ) { addressBar.setText(url ?: "") }
+        }
+        if (savedInstanceState == null) loadHome()
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        webView.saveState(outState)
-        super.onSaveInstanceState(outState)
+    private fun loadHome() = navigate("https://www.google.com")
+
+    private fun navigate(raw: String) {
+        val input = raw.trim()
+        if (input.isEmpty()) return
+        val uri = when {
+            input.startsWith("http://") || input.startsWith("https://") -> input
+            input.contains(".") && !input.contains(" ") -> "https://$input"
+            else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"
+        }
+        session.loadUri(uri)
     }
 
-    @Deprecated("Deprecated in Android API 33")
+    private fun button(label: String, action: () -> Unit) = TextView(this).apply {
+        text = label
+        textSize = if (label == "U") 18f else 28f
+        gravity = Gravity.CENTER
+        setOnClickListener { action() }
+        layoutParams = LinearLayout.LayoutParams(44.dp(), 48.dp())
+    }
+
     override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+        if (session.canGoBack) session.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
-        webView.destroy()
+        session.close()
         super.onDestroy()
     }
+
+    private fun Int.dp() = (this * resources.displayMetrics.density).toInt()
 }
