@@ -477,7 +477,7 @@ class MainActivity : Activity() {
                     .setMessage("This extension is requesting:\n\n$requested")
                     .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false)) }
                     .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true)) }
-                    .setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false)) }
+                    .setOnCancelListener { _ -> result.complete(WebExtension.PermissionPromptResponse(false)) }
                     .show()
             }
             return result
