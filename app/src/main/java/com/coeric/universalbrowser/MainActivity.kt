@@ -125,7 +125,7 @@ class MainActivity : Activity() {
     private fun showExtensionManager() {
         getRuntime().webExtensionController.list().accept(
             { extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } },
-            { error -> runOnUiThread { Toast.makeText(this, "Could not load extensions: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() } }
+            { error -> runOnUiThread { Toast.makeText(this, "Could not load extensions: ${error?.message ?: "unknown error"}", Toast.LENGTH_LONG).show() } }
         )
     }
 
@@ -144,7 +144,7 @@ class MainActivity : Activity() {
             setPadding(24, 8, 24, 8)
         }
         extensions.forEach { extension ->
-            val name = extension.metaData.name.takeIf { it.isNotBlank() } ?: extension.id
+            val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
             val enabled = extension.metaData.enabled
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -166,7 +166,7 @@ class MainActivity : Activity() {
                 }
                 result.accept(
                     { showExtensionManager() },
-                    { error -> Toast.makeText(this, "Extension change failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                    { error -> Toast.makeText(this, "Extension change failed: ${error?.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
                 )
             })
             row.addView(button("×") {
@@ -177,7 +177,7 @@ class MainActivity : Activity() {
                     .setPositiveButton("Remove") { _, _ ->
                         getRuntime().webExtensionController.uninstall(extension).accept(
                             { showExtensionManager() },
-                            { error -> Toast.makeText(this, "Remove failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
+                            { error -> Toast.makeText(this, "Remove failed: ${error?.message ?: "unknown error"}", Toast.LENGTH_LONG).show() }
                         )
                     }
                     .show()
@@ -212,7 +212,7 @@ class MainActivity : Activity() {
                 },
                 { error ->
                     runOnUiThread {
-                        Toast.makeText(this, "Extension install failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Extension install failed: ${error?.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
                     }
                 }
             )
@@ -226,7 +226,7 @@ class MainActivity : Activity() {
             dataCollectionPermissions: Array<String>
         ): GeckoResult<WebExtension.PermissionPromptResponse> {
             val result = GeckoResult<WebExtension.PermissionPromptResponse>()
-            val name = extension.metaData.name.takeIf { it.isNotBlank() } ?: extension.id
+            val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
             val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList())
                 .distinct()
                 .joinToString("\n")
@@ -236,7 +236,7 @@ class MainActivity : Activity() {
                     result.complete(WebExtension.PermissionPromptResponse(false, false, false))
                     return@runOnUiThread
                 }
-                AlertDialog.Builder(this)
+                AlertDialog.Builder(this@MainActivity)
                     .setTitle("Install $name?")
                     .setMessage("Requested permissions:\n\n$requested")
                     .setNegativeButton("Cancel") { _, _ ->
