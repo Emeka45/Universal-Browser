@@ -2,26 +2,32 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.DownloadManager
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.Gravity
 import android.view.View
+import android.webkit.CookieManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import org.json.JSONObject
 import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.Geckoview
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebExtensionController
+import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var session: GeckoSession
@@ -34,6 +40,8 @@ class MainActivity : Activity() {
     private var canGoBack = false
     private var canGoForward = false
     private var currentUrl = ""
+    private var lastMediaUrl = ""
+    private var lastMediaPromptAt = 0L
 
     private val purple = Color.rgb(101, 72, 255)
     private val violet = Color.rgb(145, 74, 255)
@@ -89,6 +97,93 @@ class MainActivity : Activity() {
         getRuntime().webExtensionController.promptDelegate = extensionPromptDelegate
         session.open(getRuntime())
         browserView.setSession(session)
+        installMediaDetector()
+    }
+
+    private fun installMediaDetector() {
+        getRuntime().webExtensionController.ensureBuiltIn(
+            "resource://android/assets/media-detector/",
+            MEDIA_DETECTOR_ID
+        ).accept(
+            { extension ->
+                session.getWebExtensionController().setMessageDelegate(
+                    extension,
+                    mediaMessageDelegate,
+                    NATIVE_APP_NAME
+                )
+            },
+            { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
+        )
+    }
+
+    private val mediaMessageDelegate = object : WebExtension.MessageDelegate {
+        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
+            if (nativeApp != NATIVE_APP_NAME || sender.session !== session || message !is JSONObject) return null
+            if (message.optString("type") != "media-playable") return null
+            val url = message.optString("url").trim()
+            if (!isDownloadableMediaUrl(url)) return null
+            val title = message.optString("title").trim().ifBlank { "Video" }
+            runOnUiThread { offerMediaDownload(url, title) }
+            return null
+        }
+    }
+
+    private fun isDownloadableMediaUrl(url: String): Boolean {
+        if (url.isBlank() || url.startsWith("blob:", true) || url.startsWith("data:", true)) return false
+        val lower = url.substringBefore('?').lowercase(Locale.US)
+        return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") ||
+            lower.endsWith(".m4v") || lower.endsWith(".3gp") || lower.endsWith(".mkv") ||
+            lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".ogg") ||
+            lower.endsWith(".oga")
+    }
+
+    private fun offerMediaDownload(url: String, title: String) {
+        val now = System.currentTimeMillis()
+        if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
+        lastMediaUrl = url
+        lastMediaPromptAt = now
+        val cleanTitle = title.replace(Regex("\\s+"), " ").trim().take(80)
+        AlertDialog.Builder(this)
+            .setTitle("Media ready to download")
+            .setMessage("Universal detected a playable video or audio file.\n\n$cleanTitle")
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Download") { _, _ -> enqueueMediaDownload(url, cleanTitle) }
+            .show()
+    }
+
+    private fun enqueueMediaDownload(url: String, title: String) {
+        try {
+            val uri = Uri.parse(url)
+            val request = DownloadManager.Request(uri)
+                .setTitle(title.ifBlank { "Universal media" })
+                .setDescription("Downloaded by Universal Browser")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, buildMediaFilename(url, title))
+
+            val cookies = CookieManager.getInstance().getCookie(url)
+            if (!cookies.isNullOrBlank()) request.addRequestHeader("Cookie", cookies)
+            if (currentUrl.isNotBlank()) request.addRequestHeader("Referer", currentUrl)
+            request.addRequestHeader("User-Agent", getRuntimeUserAgent())
+
+            val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+            manager.enqueue(request)
+            toast("Download started — check Downloads for progress.")
+        } catch (error: Throwable) {
+            toast("Could not start download: ${error.message ?: "unsupported media"}")
+        }
+    }
+
+    private fun getRuntimeUserAgent(): String = try {
+        "Mozilla/5.0 (Linux; Android) UniversalBrowser"
+    } catch (_: Throwable) { "UniversalBrowser" }
+
+    private fun buildMediaFilename(url: String, title: String): String {
+        val pathName = try { Uri.parse(url).lastPathSegment.orEmpty() } catch (_: Throwable) { "" }
+        val extension = Regex("\\.([a-zA-Z0-9]{2,5})$").find(pathName.substringBefore('?'))?.groupValues?.get(1)?.lowercase(Locale.US)
+        val base = (title.ifBlank { pathName.substringBeforeLast('.', pathName) }.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().take(90)).ifBlank { "Universal-media" }
+        return if (extension != null && !base.lowercase(Locale.US).endsWith(".$extension")) "$base.$extension" else if (pathName.contains('.')) pathName.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(120) else "$base.mp4"
     }
 
     private fun recoverSession(message: String) {
@@ -145,10 +240,19 @@ class MainActivity : Activity() {
         content.addView(sectionTitle("Your browser", "Everything you need, without the clutter"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 22.dp(); bottomMargin = 10.dp() })
         content.addView(featureCard("Extensions", "Install, manage and remove WebExtensions", "▣") { showExtensionManagerPage() })
         content.addView(featureCard("Add-ons", "Browse Firefox-compatible extensions", "+") { navigate("https://addons.mozilla.org/android/") }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() })
+        content.addView(featureCard("Media downloads", "Play supported videos, then download them in one tap", "↓") { showMediaDownloadInfo() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() })
         content.addView(featureCard("Private by design", "Fast, focused browsing with a lightweight interface", "◈") { showAbout() }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() })
         content.addView(TextView(this).apply { text = "UNIVERSAL BROWSER  •  BUILT FOR ANDROID"; textSize = 10f; letterSpacing = 0.08f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 152, 168)); gravity = Gravity.CENTER; setPadding(0, 26.dp(), 0, 0) })
         scroll.addView(content)
         return scroll
+    }
+
+    private fun showMediaDownloadInfo() {
+        AlertDialog.Builder(this)
+            .setTitle("Universal Media Downloader")
+            .setMessage("Play a supported video or audio file. Universal will detect the direct media resource and offer a Download button.\n\nDownloads use Android's system Download Manager, so progress and completed files appear in your normal Downloads area. DRM-protected, blob-only and protected streams cannot be downloaded by this feature.")
+            .setPositiveButton("Got it", null)
+            .show()
     }
 
     private fun sectionTitle(title: String, subtitle: String): View {
@@ -179,7 +283,12 @@ class MainActivity : Activity() {
     private fun cardParams() = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply { setMargins(4.dp(), 0, 4.dp(), 0) }
     private fun toolbarButton(label: String, size: Float, action: () -> Unit) = TextView(this).apply { text = label; textSize = size; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); setOnClickListener { action() }; background = rounded(Color.TRANSPARENT, 12.dp()); layoutParams = LinearLayout.LayoutParams(40.dp(), 42.dp()) }
 
-    private fun showHome() { browserView.visibility = View.GONE; homePanel.visibility = View.VISIBLE; addressBar.setText("") }
+    private fun showHome() {
+        browserView.visibility = View.GONE
+        homePanel.visibility = View.VISIBLE
+        addressBar.setText("")
+        if (::session.isInitialized) session.setActive(false)
+    }
 
     private fun navigate(raw: String) {
         val input = raw.trim()
@@ -194,18 +303,20 @@ class MainActivity : Activity() {
         addressBar.setText(uri)
         homePanel.visibility = View.GONE
         browserView.visibility = View.VISIBLE
+        session.setActive(true)
         session.loadUri(uri)
     }
 
     private fun showBrowserMenu() {
-        val items = arrayOf("Home", "Extensions", "Browse Add-ons", "Reload", "About Universal")
+        val items = arrayOf("Home", "Extensions", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")
         AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which ->
             when (which) {
                 0 -> showHome()
                 1 -> showExtensionManagerPage()
                 2 -> navigate("https://addons.mozilla.org/android/")
-                3 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()
-                4 -> showAbout()
+                3 -> showMediaDownloadInfo()
+                4 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()
+                5 -> showAbout()
             }
         }.show()
     }
@@ -302,5 +413,9 @@ class MainActivity : Activity() {
     private fun gradient(colors: IntArray, radius: Int): GradientDrawable = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = radius.toFloat() }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
-    companion object { private const val REQUEST_EXTENSION = 7101 }
+    companion object {
+        private const val REQUEST_EXTENSION = 7101
+        private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"
+        private const val NATIVE_APP_NAME = "browser"
+    }
 }
