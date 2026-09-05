@@ -1,0 +1,193 @@
+name: Add Core Browser Controls
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: universal-browser-core-controls-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Patch desktop mode and find-in-page
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/coeric/universalbrowser/MainActivity.kt')
+          s = p.read_text()
+
+          if 'import org.mozilla.geckoview.GeckoSessionSettings' not in s:
+              s = s.replace(
+                  'import org.mozilla.geckoview.GeckoSession\n',
+                  'import org.mozilla.geckoview.GeckoSession\nimport org.mozilla.geckoview.GeckoSessionSettings\n'
+              )
+
+          if 'private var desktopMode = false' not in s:
+              s = s.replace(
+                  '    private var lastMediaPromptAt = 0L\n',
+                  '    private var lastMediaPromptAt = 0L\n    private var desktopMode = false\n'
+              )
+
+          s = s.replace(
+              '        session = GeckoSession()\n',
+              '        session = GeckoSession()\n        applyDisplayMode()\n',
+              1
+          )
+
+          marker = '        row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })\n'
+          addition = '''        row.addView(toolbarButton("▣", 19f) { showCoreControls() })\n''' + marker
+          if 'showCoreControls()' not in s:
+              if marker not in s:
+                  raise SystemExit('Toolbar menu marker not found')
+              s = s.replace(marker, addition, 1)
+
+          methods = '''
+    private fun applyDisplayMode() {
+        if (!::session.isInitialized) return
+        val settings = session.getSettings()
+        settings.setUserAgentMode(
+            if (desktopMode) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+            else GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+        )
+        settings.setViewportMode(
+            if (desktopMode) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+            else GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+        )
+    }
+
+    private fun toggleDesktopMode() {
+        if (!::session.isInitialized) return
+        desktopMode = !desktopMode
+        applyDisplayMode()
+        session.reload()
+        toast(if (desktopMode) "Desktop site enabled" else "Mobile site enabled")
+    }
+
+    private fun showFindInPage() {
+        if (!::session.isInitialized || browserView.visibility != View.VISIBLE) {
+            toast("Open a webpage first.")
+            return
+        }
+        val input = EditText(this).apply {
+            hint = "Find text on this page"
+            isSingleLine = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Find in page")
+            .setView(input)
+            .setNegativeButton("Close") { _, _ -> session.getFinder().clear() }
+            .setPositiveButton("Find") { _, _ ->
+                val query = input.text.toString().trim()
+                if (query.isNotEmpty()) {
+                    session.getFinder().setDisplayFlags(GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL)
+                    session.getFinder().find(query, GeckoSession.FINDER_FIND_FORWARD)
+                }
+            }
+            .show()
+    }
+
+    private fun showCoreControls() {
+        if (!::session.isInitialized || browserView.visibility != View.VISIBLE) {
+            toast("Open a webpage first.")
+            return
+        }
+        val options = arrayOf(
+            if (desktopMode) "Switch to mobile site" else "Request desktop site",
+            "Find in page",
+            "Reload page",
+            "Page information"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Page tools")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> toggleDesktopMode()
+                    1 -> showFindInPage()
+                    2 -> session.reload()
+                    3 -> showAboutPageInfo()
+                }
+            }
+            .show()
+    }
+
+    private fun showAboutPageInfo() {
+        val url = currentUrl.ifBlank { "Unknown" }
+        AlertDialog.Builder(this)
+            .setTitle("Page information")
+            .setMessage("Current address:\n\n$url\n\nMode: ${if (desktopMode) "Desktop" else "Mobile"}")
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+'''
+          anchor = '    private fun ensureBrowserReady() {'
+          if 'private fun applyDisplayMode()' not in s:
+              if anchor not in s:
+                  raise SystemExit('Method insertion anchor not found')
+              s = s.replace(anchor, methods + anchor, 1)
+
+          s = s.replace(
+              'A lightweight Gecko browser for Android Go devices',
+              'A full-featured Gecko browser built for Android'
+          )
+          p.write_text(s)
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Gradle
+        run: |
+          gradle --version
+
+      - name: Build patched browser
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
+          test -n "$apk"
+          echo "APK: $apk"
+          file "$apk"
+          du -h "$apk"
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+          else
+            git commit -m "feat: add desktop mode and find in page"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-browser-core-controls
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
