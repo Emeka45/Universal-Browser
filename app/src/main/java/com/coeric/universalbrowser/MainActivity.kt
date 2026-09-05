@@ -21,7 +21,6 @@ import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
 import org.mozilla.geckoview.GeckoResult
-import org.mozilla.geckoview.Geckoview
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -101,17 +100,8 @@ class MainActivity : Activity() {
     }
 
     private fun installMediaDetector() {
-        getRuntime().webExtensionController.ensureBuiltIn(
-            "resource://android/assets/media-detector/",
-            MEDIA_DETECTOR_ID
-        ).accept(
-            { extension ->
-                session.getWebExtensionController().setMessageDelegate(
-                    extension,
-                    mediaMessageDelegate,
-                    NATIVE_APP_NAME
-                )
-            },
+        getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept(
+            { extension -> session.getWebExtensionController().setMessageDelegate(extension, mediaMessageDelegate, NATIVE_APP_NAME) },
             { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
         )
     }
@@ -131,10 +121,7 @@ class MainActivity : Activity() {
     private fun isDownloadableMediaUrl(url: String): Boolean {
         if (url.isBlank() || url.startsWith("blob:", true) || url.startsWith("data:", true)) return false
         val lower = url.substringBefore('?').lowercase(Locale.US)
-        return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") ||
-            lower.endsWith(".m4v") || lower.endsWith(".3gp") || lower.endsWith(".mkv") ||
-            lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".ogg") ||
-            lower.endsWith(".oga")
+        return lower.endsWith(".mp4") || lower.endsWith(".webm") || lower.endsWith(".mov") || lower.endsWith(".m4v") || lower.endsWith(".3gp") || lower.endsWith(".mkv") || lower.endsWith(".mp3") || lower.endsWith(".m4a") || lower.endsWith(".ogg") || lower.endsWith(".oga")
     }
 
     private fun offerMediaDownload(url: String, title: String) {
@@ -161,12 +148,10 @@ class MainActivity : Activity() {
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
                 .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, buildMediaFilename(url, title))
-
             val cookies = CookieManager.getInstance().getCookie(url)
             if (!cookies.isNullOrBlank()) request.addRequestHeader("Cookie", cookies)
             if (currentUrl.isNotBlank()) request.addRequestHeader("Referer", currentUrl)
             request.addRequestHeader("User-Agent", getRuntimeUserAgent())
-
             val manager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
             manager.enqueue(request)
             toast("Download started — check Downloads for progress.")
@@ -175,9 +160,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun getRuntimeUserAgent(): String = try {
-        "Mozilla/5.0 (Linux; Android) UniversalBrowser"
-    } catch (_: Throwable) { "UniversalBrowser" }
+    private fun getRuntimeUserAgent(): String = "Mozilla/5.0 (Linux; Android) UniversalBrowser"
 
     private fun buildMediaFilename(url: String, title: String): String {
         val pathName = try { Uri.parse(url).lastPathSegment.orEmpty() } catch (_: Throwable) { "" }
@@ -207,14 +190,8 @@ class MainActivity : Activity() {
         backButton = toolbarButton("‹", 28f) { if (::session.isInitialized && canGoBack) session.goBack() }
         forwardButton = toolbarButton("›", 28f) { if (::session.isInitialized && canGoForward) session.goForward() }
         row.addView(backButton); row.addView(forwardButton)
-        row.addView(TextView(this).apply {
-            text = "U"; textSize = 19f; typeface = Typeface.create("sans-serif", Typeface.BOLD); gravity = Gravity.CENTER; setTextColor(white)
-            background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat()
-        }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
-        addressBar = EditText(this).apply {
-            hint = "Search or enter address"; textSize = 14.5f; setSingleLine(true); setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0)
-            background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
-        }
+        row.addView(TextView(this).apply { text = "U"; textSize = 19f; typeface = Typeface.create("sans-serif", Typeface.BOLD); gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat() }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
+        addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; setSingleLine(true); setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
         row.addView(toolbarButton("↻", 21f) { if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload() else showHome() })
         row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
@@ -248,11 +225,7 @@ class MainActivity : Activity() {
     }
 
     private fun showMediaDownloadInfo() {
-        AlertDialog.Builder(this)
-            .setTitle("Universal Media Downloader")
-            .setMessage("Play a supported video or audio file. Universal will detect the direct media resource and offer a Download button.\n\nDownloads use Android's system Download Manager, so progress and completed files appear in your normal Downloads area. DRM-protected, blob-only and protected streams cannot be downloaded by this feature.")
-            .setPositiveButton("Got it", null)
-            .show()
+        AlertDialog.Builder(this).setTitle("Universal Media Downloader").setMessage("Play a supported video or audio file. Universal will detect the direct media resource and offer a Download button.\n\nDownloads use Android's system Download Manager, so progress and completed files appear in your normal Downloads area. DRM-protected, blob-only and protected streams cannot be downloaded by this feature.").setPositiveButton("Got it", null).show()
     }
 
     private fun sectionTitle(title: String, subtitle: String): View {
@@ -283,12 +256,7 @@ class MainActivity : Activity() {
     private fun cardParams() = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply { setMargins(4.dp(), 0, 4.dp(), 0) }
     private fun toolbarButton(label: String, size: Float, action: () -> Unit) = TextView(this).apply { text = label; textSize = size; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); setOnClickListener { action() }; background = rounded(Color.TRANSPARENT, 12.dp()); layoutParams = LinearLayout.LayoutParams(40.dp(), 42.dp()) }
 
-    private fun showHome() {
-        browserView.visibility = View.GONE
-        homePanel.visibility = View.VISIBLE
-        addressBar.setText("")
-        if (::session.isInitialized) session.setActive(false)
-    }
+    private fun showHome() { browserView.visibility = View.GONE; homePanel.visibility = View.VISIBLE; addressBar.setText(""); if (::session.isInitialized) session.setActive(false) }
 
     private fun navigate(raw: String) {
         val input = raw.trim()
@@ -322,10 +290,7 @@ class MainActivity : Activity() {
     }
 
     private fun showExtensionManagerPage() {
-        getRuntime().webExtensionController.list().accept(
-            { extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } },
-            { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } }
-        )
+        getRuntime().webExtensionController.list().accept({ extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } }, { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } })
     }
 
     private fun renderExtensionManager(extensions: List<WebExtension>) {
@@ -346,15 +311,8 @@ class MainActivity : Activity() {
                 textBox.addView(TextView(this).apply { text = name; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
                 textBox.addView(TextView(this).apply { text = if (enabled) "Enabled" else "Disabled"; textSize = 10.5f; setTextColor(if (enabled) Color.rgb(54, 139, 83) else muted); setPadding(0, 2.dp(), 0, 0) })
                 row.addView(textBox)
-                row.addView(toolbarButton(if (enabled) "OFF" else "ON", 10f) {
-                    val result = if (enabled) getRuntime().webExtensionController.disable(extension, WebExtensionController.EnableSource.USER) else getRuntime().webExtensionController.enable(extension, WebExtensionController.EnableSource.USER)
-                    result.accept({ showExtensionManagerPage() }, { error -> toast("Extension change failed: ${error?.message ?: "unknown error"}") })
-                })
-                row.addView(toolbarButton("×", 20f) {
-                    AlertDialog.Builder(this).setTitle("Remove $name?").setMessage("This will uninstall the extension and its stored data.").setNegativeButton("Cancel", null).setPositiveButton("Remove") { _, _ ->
-                        getRuntime().webExtensionController.uninstall(extension).accept({ showExtensionManagerPage() }, { error -> toast("Remove failed: ${error?.message ?: "unknown error"}") })
-                    }.show()
-                })
+                row.addView(toolbarButton(if (enabled) "OFF" else "ON", 10f) { val result = if (enabled) getRuntime().webExtensionController.disable(extension, WebExtensionController.EnableSource.USER) else getRuntime().webExtensionController.enable(extension, WebExtensionController.EnableSource.USER); result.accept({ showExtensionManagerPage() }, { error -> toast("Extension change failed: ${error?.message ?: "unknown error"}") }) })
+                row.addView(toolbarButton("×", 20f) { AlertDialog.Builder(this).setTitle("Remove $name?").setMessage("This will uninstall the extension and its stored data.").setNegativeButton("Cancel", null).setPositiveButton("Remove") { _, _ -> getRuntime().webExtensionController.uninstall(extension).accept({ showExtensionManagerPage() }, { error -> toast("Remove failed: ${error?.message ?: "unknown error"}") }) }.show() })
                 outer.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 7.dp() })
             }
         }
@@ -366,11 +324,7 @@ class MainActivity : Activity() {
     }
 
     private fun openExtensionPicker() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-xpinstall", "application/zip", "application/octet-stream"))
-        }, REQUEST_EXTENSION)
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"; putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-xpinstall", "application/zip", "application/octet-stream")) }, REQUEST_EXTENSION)
     }
 
     @Deprecated("Deprecated in Android API 33")
@@ -380,10 +334,7 @@ class MainActivity : Activity() {
     }
 
     private fun installExtension(uri: Uri) {
-        getRuntime().webExtensionController.install(uri.toString(), WebExtensionController.INSTALLATION_METHOD_FROM_FILE).accept(
-            { extension -> runOnUiThread { toast("${extension?.metaData?.name ?: "Extension"} installed"); showExtensionManagerPage() } },
-            { error -> runOnUiThread { toast("Extension install failed: ${error?.message ?: "unknown error"}") } }
-        )
+        getRuntime().webExtensionController.install(uri.toString(), WebExtensionController.INSTALLATION_METHOD_FROM_FILE).accept({ extension -> runOnUiThread { toast("${extension?.metaData?.name ?: "Extension"} installed"); showExtensionManagerPage() } }, { error -> runOnUiThread { toast("Extension install failed: ${error?.message ?: "unknown error"}") } })
     }
 
     private fun showAbout() {
@@ -396,13 +347,7 @@ class MainActivity : Activity() {
             val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
             val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList()).distinct().joinToString("\n").ifBlank { "No additional permissions listed." }
             runOnUiThread {
-                AlertDialog.Builder(this@MainActivity)
-                    .setTitle("Install $name?")
-                    .setMessage("This extension is requesting:\n\n$requested")
-                    .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
-                    .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }
-                    .setOnCancelListener { _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
-                    .show()
+                AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("This extension is requesting:\n\n$requested").setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }.setOnCancelListener { _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.show()
             }
             return result
         }
@@ -413,9 +358,5 @@ class MainActivity : Activity() {
     private fun gradient(colors: IntArray, radius: Int): GradientDrawable = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = radius.toFloat() }
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
-    companion object {
-        private const val REQUEST_EXTENSION = 7101
-        private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"
-        private const val NATIVE_APP_NAME = "browser"
-    }
+    companion object { private const val REQUEST_EXTENSION = 7101; private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"; private const val NATIVE_APP_NAME = "browser" }
 }
