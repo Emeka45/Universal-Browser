@@ -10,19 +10,15 @@ android {
         applicationId = "com.coeric.universalbrowser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
-        // Redmi A1 uses a 32-bit ARM CPU/OS configuration.
-        // Build a single ARMv7 APK so the phone receives the correct native GeckoView libraries.
+        // Redmi A1 compatibility: ship one directly installable ARMv7 APK.
         ndk {
             abiFilters += "armeabi-v7a"
         }
     }
 
-    // Do not generate separate ABI APKs. The ARMv7 filter above produces one
-    // directly installable APK for Redmi A1 instead of requiring the user to
-    // choose/download the correct split.
     splits {
         abi {
             isEnable = false
