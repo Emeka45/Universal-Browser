@@ -34,15 +34,18 @@ class MainActivity : Activity() {
     private var canGoBack = false
     private var canGoForward = false
 
-    private val purple = Color.rgb(98, 72, 255)
-    private val darkPurple = Color.rgb(55, 38, 145)
-    private val ink = Color.rgb(24, 24, 38)
-    private val muted = Color.rgb(105, 103, 125)
+    private val purple = Color.rgb(101, 72, 255)
+    private val violet = Color.rgb(145, 74, 255)
+    private val darkPurple = Color.rgb(50, 32, 132)
+    private val ink = Color.rgb(27, 26, 39)
+    private val muted = Color.rgb(105, 103, 123)
+    private val surface = Color.rgb(247, 246, 251)
+    private val white = Color.WHITE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = Color.rgb(246, 244, 255)
-        window.navigationBarColor = Color.WHITE
+        window.statusBarColor = white
+        window.navigationBarColor = white
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
 
         session = GeckoSession()
@@ -52,12 +55,10 @@ class MainActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(white)
         }
 
-        val toolbar = buildToolbar()
-        root.addView(toolbar)
-
+        root.addView(buildToolbar())
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progressTintList = android.content.res.ColorStateList.valueOf(purple)
@@ -103,14 +104,10 @@ class MainActivity : Activity() {
     private fun buildToolbar(): View {
         val outer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(8.dp(), 8.dp(), 8.dp(), 7.dp())
-            background = rounded(Color.WHITE, 0, 0, 0, 18.dp())
-            elevation = 5.dp().toFloat()
+            setPadding(8.dp(), 8.dp(), 8.dp(), 8.dp())
+            setBackgroundColor(white)
         }
-
-        val row = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
 
         backButton = toolbarButton("‹", 28f) { if (canGoBack) session.goBack() }
         forwardButton = toolbarButton("›", 28f) { if (canGoForward) session.goForward() }
@@ -119,132 +116,180 @@ class MainActivity : Activity() {
 
         val brand = TextView(this).apply {
             text = "U"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+            textSize = 19f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(purple, darkPurple)).apply {
-                cornerRadius = 12.dp().toFloat()
-            }
-            elevation = 3.dp().toFloat()
+            setTextColor(white)
+            background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp())
+            elevation = 4.dp().toFloat()
         }
-        row.addView(brand, LinearLayout.LayoutParams(38.dp(), 38.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
+        row.addView(brand, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
 
         addressBar = EditText(this).apply {
             hint = "Search or enter address"
-            textSize = 15f
+            textSize = 14.5f
             setSingleLine(true)
             setTextColor(ink)
-            setHintTextColor(Color.rgb(150, 148, 166))
-            setPadding(14.dp(), 0, 14.dp(), 0)
-            background = rounded(Color.rgb(246, 244, 251), 0, 0, 0, 22.dp())
+            setHintTextColor(Color.rgb(145, 143, 158))
+            setPadding(16.dp(), 0, 14.dp(), 0)
+            background = rounded(surface, 22.dp())
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
-
-        row.addView(toolbarButton("↻", 22f) { if (browserView.visibility == View.VISIBLE) session.reload() else showHome() })
-        row.addView(toolbarButton("⌄", 22f) { showBrowserMenu() })
+        row.addView(toolbarButton("↻", 21f) { if (browserView.visibility == View.VISIBLE) session.reload() else showHome() })
+        row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
         outer.addView(row)
         return outer
     }
 
     private fun buildHomePanel(): View {
-        val scroll = ScrollView(this).apply { setBackgroundColor(Color.rgb(249, 248, 253)) }
+        val scroll = ScrollView(this).apply { setBackgroundColor(surface) }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(24.dp(), 34.dp(), 24.dp(), 32.dp())
+            setPadding(18.dp(), 18.dp(), 18.dp(), 34.dp())
         }
 
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(22.dp(), 28.dp(), 22.dp(), 28.dp())
+            background = gradient(intArrayOf(darkPurple, purple, violet), 28.dp())
+            elevation = 5.dp().toFloat()
+        }
         val logo = TextView(this).apply {
             text = "U"
-            textSize = 62f
+            textSize = 58f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(purple, Color.rgb(142, 75, 255), darkPurple)).apply {
-                cornerRadius = 34.dp().toFloat()
-            }
-            elevation = 10.dp().toFloat()
+            setTextColor(white)
+            background = gradient(intArrayOf(violet, purple), 31.dp())
+            elevation = 7.dp().toFloat()
         }
-        content.addView(logo, LinearLayout.LayoutParams(118.dp(), 118.dp()).apply { bottomMargin = 20.dp() })
-
-        content.addView(TextView(this).apply {
-            text = "Universal"
-            textSize = 34f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ink)
+        hero.addView(logo, LinearLayout.LayoutParams(104.dp(), 104.dp()).apply { bottomMargin = 17.dp() })
+        hero.addView(TextView(this).apply {
+            text = "UNIVERSAL"
+            textSize = 29f
+            letterSpacing = 0.08f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            setTextColor(white)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        content.addView(TextView(this).apply {
-            text = "A faster, cleaner way to explore the web."
+        })
+        hero.addView(TextView(this).apply {
+            text = "Your web. Your way."
             textSize = 15f
-            setTextColor(muted)
+            setTextColor(Color.rgb(235, 231, 255))
             gravity = Gravity.CENTER
-            setPadding(0, 4.dp(), 0, 22.dp())
-        }, LinearLayout.LayoutParams(-1, -2))
-
-        val search = EditText(this).apply {
-            hint = "What do you want to find?"
-            textSize = 16f
-            setSingleLine(true)
-            setPadding(18.dp(), 0, 18.dp(), 0)
-            setTextColor(ink)
-            background = rounded(Color.WHITE, 0, 0, 0, 18.dp())
-            elevation = 4.dp().toFloat()
-            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
-        }
-        content.addView(search, LinearLayout.LayoutParams(-1, 56.dp()).apply { bottomMargin = 24.dp() })
-
-        val cards = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        cards.addView(homeCard("Extensions", "Add WebExtensions") { showExtensionHub() }, weightParams())
-        cards.addView(homeCard("Chatwait", "Open assistant") { installChatwait() }, weightParams())
-        cards.addView(homeCard("Browse", "Open the web") { navigate("https://www.google.com") }, weightParams())
-        content.addView(cards)
-
-        content.addView(TextView(this).apply {
-            text = "Built for Android • Lightweight • Extension-ready"
-            textSize = 12f
-            setTextColor(Color.rgb(140, 138, 155))
-            gravity = Gravity.CENTER
-            setPadding(0, 28.dp(), 0, 0)
+            setPadding(0, 4.dp(), 0, 20.dp())
         })
 
+        val heroSearch = EditText(this).apply {
+            hint = "Search the web or enter a URL"
+            textSize = 15f
+            setSingleLine(true)
+            setTextColor(ink)
+            setHintTextColor(Color.rgb(125, 123, 140))
+            setPadding(18.dp(), 0, 18.dp(), 0)
+            background = rounded(white, 19.dp())
+            elevation = 5.dp().toFloat()
+            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
+        }
+        hero.addView(heroSearch, LinearLayout.LayoutParams(-1, 54.dp()))
+        content.addView(hero)
+
+        content.addView(sectionTitle("Quick access", "Jump back into what matters"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
+        val quick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        quick.addView(quickCard("Google", "Search", "G") { navigate("https://www.google.com") }, cardParams())
+        quick.addView(quickCard("YouTube", "Watch", "▶") { navigate("https://www.youtube.com") }, cardParams())
+        quick.addView(quickCard("Wikipedia", "Explore", "W") { navigate("https://www.wikipedia.org") }, cardParams())
+        content.addView(quick)
+
+        content.addView(sectionTitle("Your browser", "Everything you need, without the clutter"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 22.dp(); bottomMargin = 10.dp() })
+        val extensions = featureCard("Extensions", "Install, manage and remove WebExtensions", "▣") { showExtensionManagerPage() }
+        content.addView(extensions)
+        val addons = featureCard("Add-ons", "Browse Firefox-compatible extensions", "+") { navigate("https://addons.mozilla.org/android/") }
+        content.addView(addons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() })
+        val privacy = featureCard("Private by design", "Fast, focused browsing with a lightweight interface", "◈") { showAbout() }
+        content.addView(privacy, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() })
+
+        content.addView(TextView(this).apply {
+            text = "UNIVERSAL BROWSER  •  BUILT FOR ANDROID"
+            textSize = 10f
+            letterSpacing = 0.08f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.rgb(155, 152, 168))
+            gravity = Gravity.CENTER
+            setPadding(0, 26.dp(), 0, 0)
+        })
         scroll.addView(content)
         return scroll
     }
 
-    private fun homeCard(title: String, subtitle: String, action: () -> Unit): View {
+    private fun sectionTitle(title: String, subtitle: String): View {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        box.addView(TextView(this).apply {
+            text = title
+            textSize = 19f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(ink)
+        })
+        box.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 12f
+            setTextColor(muted)
+            setPadding(0, 2.dp(), 0, 0)
+        })
+        return box
+    }
+
+    private fun quickCard(title: String, subtitle: String, mark: String, action: () -> Unit): View {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(6.dp(), 14.dp(), 6.dp(), 14.dp())
-            background = rounded(Color.WHITE, 0, 0, 0, 18.dp())
-            elevation = 3.dp().toFloat()
+            setPadding(5.dp(), 13.dp(), 5.dp(), 12.dp())
+            background = rounded(white, 18.dp())
+            elevation = 2.dp().toFloat()
             setOnClickListener { action() }
         }
-        card.addView(TextView(this).apply {
-            text = title
-            textSize = 14f
+        val icon = TextView(this).apply {
+            text = mark
+            textSize = 19f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(ink)
             gravity = Gravity.CENTER
-        })
-        card.addView(TextView(this).apply {
-            text = subtitle
-            textSize = 10f
-            setTextColor(muted)
-            gravity = Gravity.CENTER
-            setPadding(0, 3.dp(), 0, 0)
-        })
+            setTextColor(white)
+            background = gradient(intArrayOf(purple, violet), 13.dp())
+        }
+        card.addView(icon, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { bottomMargin = 8.dp() })
+        card.addView(TextView(this).apply { text = title; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); gravity = Gravity.CENTER })
+        card.addView(TextView(this).apply { text = subtitle; textSize = 10f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, 2.dp(), 0, 0) })
         return card
     }
 
-    private fun weightParams() = LinearLayout.LayoutParams(0, 88.dp(), 1f).apply { setMargins(4.dp(), 0, 4.dp(), 0) }
+    private fun featureCard(title: String, subtitle: String, mark: String, action: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(14.dp(), 13.dp(), 12.dp(), 13.dp())
+            background = rounded(white, 19.dp())
+            elevation = 2.dp().toFloat()
+            setOnClickListener { action() }
+        }
+        val icon = TextView(this).apply {
+            text = mark
+            textSize = 21f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(white)
+            background = gradient(intArrayOf(purple, violet), 15.dp())
+        }
+        row.addView(icon, LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { rightMargin = 13.dp() })
+        val textBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
+        textBox.addView(TextView(this).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
+        textBox.addView(TextView(this).apply { text = subtitle; textSize = 11.5f; setTextColor(muted); setPadding(0, 3.dp(), 0, 0) })
+        row.addView(textBox)
+        row.addView(TextView(this).apply { text = "›"; textSize = 25f; setTextColor(Color.rgb(150, 147, 166)) })
+        return row
+    }
+
+    private fun cardParams() = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply { setMargins(4.dp(), 0, 4.dp(), 0) }
 
     private fun toolbarButton(label: String, size: Float, action: () -> Unit) = TextView(this).apply {
         text = label
@@ -253,8 +298,8 @@ class MainActivity : Activity() {
         typeface = Typeface.DEFAULT_BOLD
         setTextColor(ink)
         setOnClickListener { action() }
-        background = rounded(Color.TRANSPARENT, 0, 0, 0, 12.dp())
-        layoutParams = LinearLayout.LayoutParams(42.dp(), 42.dp())
+        background = rounded(Color.TRANSPARENT, 12.dp())
+        layoutParams = LinearLayout.LayoutParams(40.dp(), 42.dp())
     }
 
     private fun showHome() {
@@ -278,40 +323,19 @@ class MainActivity : Activity() {
     }
 
     private fun showBrowserMenu() {
-        val items = arrayOf("Home", "Extensions", "Firefox Add-ons", "Reload", "About Universal")
-        AlertDialog.Builder(this)
-            .setTitle("Universal")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> showHome()
-                    1 -> showExtensionHub()
-                    2 -> navigate("https://addons.mozilla.org/android/")
-                    3 -> if (browserView.visibility == View.VISIBLE) session.reload()
-                    4 -> AlertDialog.Builder(this).setTitle("Universal Browser").setMessage("Universal Browser 0.5\nLightweight Android browser with WebExtension support.").setPositiveButton("OK", null).show()
-                }
-            }.show()
+        val items = arrayOf("Home", "Extensions", "Browse Add-ons", "Reload", "About Universal")
+        AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which ->
+            when (which) {
+                0 -> showHome()
+                1 -> showExtensionManagerPage()
+                2 -> navigate("https://addons.mozilla.org/android/")
+                3 -> if (browserView.visibility == View.VISIBLE) session.reload()
+                4 -> showAbout()
+            }
+        }.show()
     }
 
-    private fun showExtensionHub() {
-        AlertDialog.Builder(this)
-            .setTitle("Extensions")
-            .setItems(arrayOf("Installed extensions", "Install XPI from device", "Browse Firefox Add-ons")) { _, which ->
-                when (which) {
-                    0 -> showExtensionManager()
-                    1 -> openExtensionPicker()
-                    2 -> navigate("https://addons.mozilla.org/android/")
-                }
-            }.show()
-    }
-
-    private fun openExtensionPicker() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/x-xpinstall"
-        }, REQUEST_EXTENSION)
-    }
-
-    private fun showExtensionManager() {
+    private fun showExtensionManagerPage() {
         getRuntime().webExtensionController.list().accept(
             { extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } },
             { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } }
@@ -319,48 +343,106 @@ class MainActivity : Activity() {
     }
 
     private fun renderExtensionManager(extensions: List<WebExtension>) {
+        val outer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18.dp(), 6.dp(), 18.dp(), 10.dp())
+        }
+        val intro = TextView(this).apply {
+            text = "Manage the WebExtensions installed in Universal Browser."
+            textSize = 12.5f
+            setTextColor(muted)
+            setPadding(0, 0, 0, 12.dp())
+        }
+        outer.addView(intro)
+
         if (extensions.isEmpty()) {
-            AlertDialog.Builder(this).setTitle("Installed extensions").setMessage("No extensions installed yet.\n\nYou can install a Firefox-compatible .xpi file or browse Firefox Add-ons.").setPositiveButton("OK", null).show()
-            return
-        }
-        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18.dp(), 6.dp(), 18.dp(), 6.dp()) }
-        extensions.forEach { extension ->
-            val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
-            val enabled = extension.metaData.enabled
-            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 8.dp(), 0, 8.dp()) }
-            row.addView(TextView(this).apply {
-                text = "$name\n${if (enabled) "Enabled" else "Disabled"}"
-                textSize = 15f
+            val empty = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(12.dp(), 18.dp(), 12.dp(), 18.dp())
+                background = rounded(surface, 18.dp())
+            }
+            empty.addView(TextView(this).apply {
+                text = "No extensions installed"
+                textSize = 17f
+                typeface = Typeface.DEFAULT_BOLD
                 setTextColor(ink)
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
+                gravity = Gravity.CENTER
             })
-            row.addView(toolbarButton(if (enabled) "OFF" else "ON", 11f) {
-                val controller = getRuntime().webExtensionController
-                val result = if (enabled) controller.disable(extension, WebExtensionController.EnableSource.USER) else controller.enable(extension, WebExtensionController.EnableSource.USER)
-                result.accept({ showExtensionManager() }, { error -> toast("Extension change failed: ${error?.message ?: "unknown error"}") })
+            empty.addView(TextView(this).apply {
+                text = "Install a Firefox-compatible .xpi file or browse the add-ons store."
+                textSize = 12f
+                setTextColor(muted)
+                gravity = Gravity.CENTER
+                setPadding(8.dp(), 5.dp(), 8.dp(), 12.dp())
             })
-            row.addView(toolbarButton("×", 22f) {
-                AlertDialog.Builder(this).setTitle("Remove $name?").setMessage("This will uninstall the extension and remove its stored data.").setNegativeButton("Cancel", null).setPositiveButton("Remove") { _, _ ->
-                    getRuntime().webExtensionController.uninstall(extension).accept({ showExtensionManager() }, { error -> toast("Remove failed: ${error?.message ?: "unknown error"}") })
-                }.show()
-            })
-            container.addView(row)
+            outer.addView(empty)
+        } else {
+            extensions.forEach { extension ->
+                val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
+                val enabled = extension.metaData.enabled
+                val row = LinearLayout(this).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(10.dp(), 10.dp(), 6.dp(), 10.dp())
+                    background = rounded(surface, 16.dp())
+                }
+                val icon = TextView(this).apply {
+                    text = "✦"
+                    textSize = 17f
+                    gravity = Gravity.CENTER
+                    setTextColor(white)
+                    background = gradient(intArrayOf(purple, violet), 12.dp())
+                }
+                row.addView(icon, LinearLayout.LayoutParams(42.dp(), 42.dp()).apply { rightMargin = 10.dp() })
+                val textBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
+                textBox.addView(TextView(this).apply { text = name; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
+                textBox.addView(TextView(this).apply { text = if (enabled) "Enabled" else "Disabled"; textSize = 10.5f; setTextColor(if (enabled) Color.rgb(54, 139, 83) else muted); setPadding(0, 2.dp(), 0, 0) })
+                row.addView(textBox)
+                row.addView(toolbarButton(if (enabled) "OFF" else "ON", 10f) {
+                    val controller = getRuntime().webExtensionController
+                    val result = if (enabled) controller.disable(extension, WebExtensionController.EnableSource.USER) else controller.enable(extension, WebExtensionController.EnableSource.USER)
+                    result.accept({ showExtensionManagerPage() }, { error -> toast("Extension change failed: ${error?.message ?: "unknown error"}") })
+                })
+                row.addView(toolbarButton("×", 20f) {
+                    AlertDialog.Builder(this).setTitle("Remove $name?").setMessage("This will uninstall the extension and its stored data.").setNegativeButton("Cancel", null).setPositiveButton("Remove") { _, _ ->
+                        getRuntime().webExtensionController.uninstall(extension).accept({ showExtensionManagerPage() }, { error -> toast("Remove failed: ${error?.message ?: "unknown error"}") })
+                    }.show()
+                })
+                outer.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 7.dp() })
+            }
         }
-        AlertDialog.Builder(this).setTitle("Installed extensions").setView(container).setPositiveButton("Done", null).show()
+
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 12.dp(), 0, 0) }
+        val install = TextView(this).apply {
+            text = "＋  Install extension from device"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(white)
+            setPadding(18.dp(), 0, 18.dp(), 0)
+            background = gradient(intArrayOf(purple, violet), 16.dp())
+            setOnClickListener { openExtensionPicker() }
+        }
+        actions.addView(install, LinearLayout.LayoutParams(-1, 50.dp()))
+        val browse = TextView(this).apply {
+            text = "Browse Firefox Add-ons"
+            textSize = 13f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(purple)
+            setOnClickListener { navigate("https://addons.mozilla.org/android/") }
+        }
+        actions.addView(browse, LinearLayout.LayoutParams(-1, 45.dp()))
+        outer.addView(actions)
+
+        AlertDialog.Builder(this).setTitle("Extensions").setView(outer).setPositiveButton("Done", null).show()
     }
 
-    private fun installChatwait() {
-        val controller = getRuntime().webExtensionController
-        controller.list().accept({ extensions ->
-            if (extensions?.any { it.id == CHATWAIT_EXTENSION_ID } == true) {
-                runOnUiThread { toast("Chatwait is already installed") }
-                return@accept
-            }
-            controller.install(CHATWAIT_AMO_XPI_URL, WebExtensionController.INSTALLATION_METHOD_MANAGER).accept(
-                { extension -> runOnUiThread { toast("${extension?.metaData?.name ?: "Chatwait"} installed") } },
-                { error -> runOnUiThread { toast("Chatwait install failed: ${error?.message ?: "unknown error"}") } }
-            )
-        }, { error -> runOnUiThread { toast("Could not check extensions: ${error?.message ?: "unknown error"}") } })
+    private fun openExtensionPicker() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/x-xpinstall"
+        }, REQUEST_EXTENSION)
     }
 
     @Deprecated("Deprecated in Android API 33")
@@ -371,50 +453,53 @@ class MainActivity : Activity() {
 
     private fun installExtension(uri: Uri) {
         getRuntime().webExtensionController.install(uri.toString(), WebExtensionController.INSTALLATION_METHOD_FROM_FILE).accept(
-            { extension -> runOnUiThread { toast("${extension?.metaData?.name ?: "Extension"} installed") } },
+            { extension -> runOnUiThread { toast("${extension?.metaData?.name ?: "Extension"} installed"); showExtensionManagerPage() } },
             { error -> runOnUiThread { toast("Extension install failed: ${error?.message ?: "unknown error"}") } }
         )
+    }
+
+    private fun showAbout() {
+        AlertDialog.Builder(this)
+            .setTitle("Universal Browser")
+            .setMessage("A lightweight Android browser built around GeckoView and WebExtensions.\n\nVersion 0.5.0\n\nDesigned to stay clean, fast and extension-ready on everyday Android devices.")
+            .setPositiveButton("Done", null)
+            .show()
     }
 
     private val extensionPromptDelegate = object : WebExtensionController.PromptDelegate {
         override fun onInstallPromptRequest(extension: WebExtension, permissions: Array<String>, origins: Array<String>, dataCollectionPermissions: Array<String>): GeckoResult<WebExtension.PermissionPromptResponse> {
             val result = GeckoResult<WebExtension.PermissionPromptResponse>()
             val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
-            val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList()).distinct().joinToString("\n").ifBlank { "No additional permissions requested." }
+            val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList()).distinct().joinToString("\n").ifBlank { "No additional permissions listed." }
             runOnUiThread {
-                if (isFinishing || isDestroyed) { result.complete(WebExtension.PermissionPromptResponse(false, false, false)); return@runOnUiThread }
-                AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("Requested permissions:\n\n$requested").setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }.setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.show()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Install $name?")
+                    .setMessage("This extension is requesting:\n\n$requested")
+                    .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false)) }
+                    .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true)) }
+                    .setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false)) }
+                    .show()
             }
             return result
         }
     }
 
-    private fun getRuntime(): GeckoRuntime = synchronized(RUNTIME_LOCK) { runtime ?: GeckoRuntime.create(applicationContext).also { runtime = it } }
+    private fun getRuntime(): GeckoRuntime = (application as UniversalBrowserApp).runtime
 
-    private fun rounded(color: Int, strokeColor: Int, strokeWidth: Int, padding: Int, radius: Int) = GradientDrawable().apply {
+    private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
         setColor(color)
-        if (strokeWidth > 0) setStroke(strokeWidth, strokeColor)
         cornerRadius = radius.toFloat()
     }
 
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-    private fun Int.dp() = (this * resources.displayMetrics.density).toInt()
-
-    @Deprecated("Deprecated in Android API 33")
-    override fun onBackPressed() {
-        if (browserView.visibility == View.VISIBLE && canGoBack) session.goBack() else super.onBackPressed()
+    private fun gradient(colors: IntArray, radius: Int): GradientDrawable = GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply {
+        cornerRadius = radius.toFloat()
     }
 
-    override fun onDestroy() {
-        session.close()
-        super.onDestroy()
-    }
+    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+    private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val REQUEST_EXTENSION = 43
-        private const val CHATWAIT_EXTENSION_ID = "extension@chatwait.com"
-        private const val CHATWAIT_AMO_XPI_URL = "https://addons.mozilla.org/firefox/downloads/latest/chatwait/latest.xpi"
-        private val RUNTIME_LOCK = Any()
-        @Volatile private var runtime: GeckoRuntime? = null
+        private const val REQUEST_EXTENSION = 7101
     }
 }
