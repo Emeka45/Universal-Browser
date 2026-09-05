@@ -40,6 +40,9 @@ jobs:
       - name: Apply comprehensive browser upgrade
         run: python3 tools/mega_upgrade.py
 
+      - name: Apply download center upgrade
+        run: python3 tools/download_upgrade.py
+
       - name: Validate source formatting
         run: git diff --check
 
