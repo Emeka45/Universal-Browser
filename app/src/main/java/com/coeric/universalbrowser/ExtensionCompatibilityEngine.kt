@@ -155,6 +155,7 @@ object ExtensionCompatibilityEngine {
             if (input.read(header) != 12 || String(header, 0, 4, StandardCharsets.US_ASCII) != "Cr24") {
                 throw IllegalArgumentException("Unsupported extension container. Select a .crx, .xpi or ZIP WebExtension package.")
             }
+            // Keep CRX header arithmetic explicitly Long-safe when calculating the ZIP offset.
             val version = littleEndianInt(header, 4)
             val zipOffset = when (version) {
                 2 -> {
