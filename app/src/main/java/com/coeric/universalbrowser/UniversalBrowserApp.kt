@@ -2,6 +2,7 @@ package com.coeric.universalbrowser
 
 import android.app.Application
 import org.mozilla.geckoview.GeckoRuntime
+import org.mozilla.geckoview.GeckoRuntimeSettings
 
 class UniversalBrowserApp : Application() {
     @Volatile
@@ -10,6 +11,13 @@ class UniversalBrowserApp : Application() {
     @Synchronized
     fun getRuntime(): GeckoRuntime {
         runtimeInstance?.let { return it }
-        return GeckoRuntime.create(this).also { runtimeInstance = it }
+
+        val settings = GeckoRuntimeSettings.Builder()
+            // Required for addons.mozilla.org to communicate with the browser's
+            // WebExtension controller and offer in-page extension installation.
+            .extensionsWebAPIEnabled(true)
+            .build()
+
+        return GeckoRuntime.create(this, settings).also { runtimeInstance = it }
     }
 }
