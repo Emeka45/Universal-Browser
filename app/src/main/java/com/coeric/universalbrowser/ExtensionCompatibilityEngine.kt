@@ -12,13 +12,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-/**
- * Inspects Chrome/Chromium WebExtension packages before GeckoView installation.
- *
- * This is deliberately conservative: it never rewrites JavaScript semantics.
- * It only performs manifest-level compatibility preparation that is documented
- * as cross-browser safe, and reports APIs that Gecko cannot provide.
- */
 object ExtensionCompatibilityEngine {
     enum class Level { FULL, HIGH, PARTIAL, UNSUPPORTED }
 
@@ -38,24 +31,20 @@ object ExtensionCompatibilityEngine {
         val zipFile = if (looksLikeZip(input)) input else extractCrxToZip(context, input)
         val manifest = readManifest(zipFile)
             ?: throw IllegalArgumentException("This package does not contain a valid manifest.json")
-
         val name = manifest.optString("name").ifBlank { "Unnamed extension" }
         val version = manifest.optString("version").ifBlank { "unknown" }
         val mv = manifest.optInt("manifest_version", 2)
         val reasons = mutableListOf<String>()
         var level = Level.FULL
         var transformed = false
-
         val permissions = jsonStringArray(manifest.optJSONArray("permissions"))
         val optionalPermissions = jsonStringArray(manifest.optJSONArray("optional_permissions"))
-
         val hardUnsupported = setOf("debugger", "declarativeContent", "sidePanel")
         val requestedHard = (permissions + optionalPermissions).filter { it in hardUnsupported }
         if (requestedHard.isNotEmpty()) {
             level = Level.UNSUPPORTED
             reasons += "Uses Chrome APIs with no Gecko equivalent: ${requestedHard.joinToString(", ")}."
         }
-
         if (manifest.has("side_panel")) {
             level = worse(level, Level.PARTIAL)
             reasons += "Chrome side panel is not portable to Gecko and needs an alternative UI."
@@ -68,7 +57,6 @@ object ExtensionCompatibilityEngine {
             level = worse(level, Level.PARTIAL)
             reasons += "DevTools pages require a browser-specific implementation."
         }
-
         val background = manifest.optJSONObject("background")
         if (mv >= 3 && background != null && background.has("service_worker") && !background.has("scripts")) {
             val worker = background.optString("service_worker").trim()
@@ -80,27 +68,17 @@ object ExtensionCompatibilityEngine {
                 reasons += "Added a Firefox/Gecko background-script fallback for the MV3 service worker."
             }
         }
-
         if (mv >= 3 && manifest.optJSONArray("web_accessible_resources") != null) {
             reasons += "Manifest V3 web-accessible resources were preserved without unsafe conversion."
         }
-
-        if (level == Level.FULL) {
-            reasons += "Manifest uses WebExtension features that GeckoView can normally evaluate."
-        }
-        if (source.toString().lowercase().endsWith(".crx")) {
-            reasons += "Chrome CRX container was unpacked for WebExtension inspection."
-        }
+        if (level == Level.FULL) reasons += "Manifest uses WebExtension features that GeckoView can normally evaluate."
+        if (source.toString().lowercase().endsWith(".crx")) reasons += "Chrome CRX container was unpacked for WebExtension inspection."
         reasons += "Final installation is still subject to GeckoView's Mozilla-signing requirement."
-
         val prepared = if (transformed || !looksLikeZip(input)) {
             val out = File(context.cacheDir, "universal-prepared-${System.currentTimeMillis()}.xpi")
             rewritePackage(zipFile, out, manifest)
             out
-        } else {
-            zipFile
-        }
-
+        } else zipFile
         return Report(name, version, mv, if (looksLikeZip(input)) "ZIP/XPI" else "CRX", level, reasons, prepared, transformed)
     }
 
@@ -124,8 +102,7 @@ object ExtensionCompatibilityEngine {
             while (true) {
                 val entry = zis.nextEntry ?: break
                 if (!entry.isDirectory && entry.name.equals("manifest.json", ignoreCase = true)) {
-                    val text = String(zis.readBytes(), StandardCharsets.UTF_8)
-                    return JSONObject(text)
+                    return JSONObject(String(zis.readBytes(), StandardCharsets.UTF_8))
                 }
             }
         }
@@ -139,8 +116,7 @@ object ExtensionCompatibilityEngine {
                 while (true) {
                     val entry = zis.nextEntry ?: break
                     if (entry.name.equals("manifest.json", ignoreCase = true)) {
-                        val replacement = ZipEntry("manifest.json")
-                        zos.putNextEntry(replacement)
+                        zos.putNextEntry(ZipEntry("manifest.json"))
                         zos.write(manifest.toString(2).toByteArray(StandardCharsets.UTF_8))
                         zos.closeEntry()
                         replaced = true
@@ -181,19 +157,18 @@ object ExtensionCompatibilityEngine {
             }
             val version = littleEndianInt(header, 4)
             val zipOffset = when (version) {
-                2L -> {
+                2 -> {
                     val publicKeyLength = littleEndianInt(header, 8)
                     val signatureLengthBytes = ByteArray(4)
                     if (input.read(signatureLengthBytes) != 4) throw IllegalArgumentException("Invalid CRX2 header")
-                    16L + publicKeyLength + littleEndianInt(signatureLengthBytes, 0)
+                    16L + publicKeyLength.toLong() + littleEndianInt(signatureLengthBytes, 0).toLong()
                 }
-                3L -> {
+                3 -> {
                     val headerSize = littleEndianInt(header, 8)
-                    12L + headerSize
+                    12L + headerSize.toLong()
                 }
                 else -> throw IllegalArgumentException("Unsupported CRX version: $version")
             }
-
             FileInputStream(crx).use { full ->
                 if (full.skip(zipOffset) != zipOffset) throw IllegalArgumentException("Invalid CRX package")
                 val out = File(context.cacheDir, "universal-crx-${System.currentTimeMillis()}.zip")
@@ -203,10 +178,10 @@ object ExtensionCompatibilityEngine {
         }
     }
 
-    private fun littleEndianInt(bytes: ByteArray, offset: Int): Long {
-        return (bytes[offset].toLong() and 0xff) or
-            ((bytes[offset + 1].toLong() and 0xff) shl 8) or
-            ((bytes[offset + 2].toLong() and 0xff) shl 16) or
-            ((bytes[offset + 3].toLong() and 0xff) shl 24)
+    private fun littleEndianInt(bytes: ByteArray, offset: Int): Int {
+        return (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xff) shl 16) or
+            ((bytes[offset + 3].toInt() and 0xff) shl 24)
     }
 }
