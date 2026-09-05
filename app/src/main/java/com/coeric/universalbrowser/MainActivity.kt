@@ -21,7 +21,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val runtime = GeckoRuntime.create(this)
+        val runtime = getRuntime()
         session = GeckoSession()
         session.open(runtime)
 
@@ -88,16 +88,21 @@ class MainActivity : Activity() {
         if (savedInstanceState == null) loadHome()
     }
 
+    private fun getRuntime(): GeckoRuntime = synchronized(RUNTIME_LOCK) {
+        runtime ?: GeckoRuntime.create(applicationContext).also { runtime = it }
+    }
+
     private fun loadHome() = navigate("https://www.google.com")
 
     private fun navigate(raw: String) {
         val input = raw.trim()
         if (input.isEmpty()) return
         val uri = when {
-            input.startsWith("http://") || input.startsWith("https://") -> input
+            input.startsWith("http://", ignoreCase = true) || input.startsWith("https://", ignoreCase = true) -> input
             input.contains(".") && !input.contains(" ") -> "https://$input"
             else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"
         }
+        addressBar.setText(uri)
         session.loadUri(uri)
     }
 
@@ -119,4 +124,10 @@ class MainActivity : Activity() {
     }
 
     private fun Int.dp() = (this * resources.displayMetrics.density).toInt()
+
+    companion object {
+        private const val REQUEST_OPEN = 42
+        private val RUNTIME_LOCK = Any()
+        @Volatile private var runtime: GeckoRuntime? = null
+    }
 }
