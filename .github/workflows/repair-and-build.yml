@@ -24,10 +24,7 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/java/com/coeric/universalbrowser/MainActivity.kt')
           s = p.read_text()
-          # Repair Kotlin strings that were accidentally written with a backslash
-          # followed by a physical newline. Kotlin requires escaped newlines here.
           s = s.replace('\\\n', '\\n')
-          # Use the Kotlin property form for EditText single-line mode.
           s = s.replace('setSingleLine()', 'isSingleLine = true')
           p.write_text(s)
           PY
@@ -38,11 +35,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          if ! git diff --cached --quiet; then
-            git commit -m "fix: repair Universal Browser Kotlin build errors"
-            git push
-          else
+          if git diff --cached --quiet; then
             echo "No source repair changes required."
+          else
+            git commit -m "fix: repair Universal Browser Kotlin build errors"
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi
 
       - name: Set up Java 17
