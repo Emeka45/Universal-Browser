@@ -475,9 +475,9 @@ class MainActivity : Activity() {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Install $name?")
                     .setMessage("This extension is requesting:\n\n$requested")
-                    .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false)) }
-                    .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true)) }
-                    .setOnCancelListener { _ -> result.complete(WebExtension.PermissionPromptResponse(false)) }
+                    .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
+                    .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }
+                    .setOnCancelListener { _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
                     .show()
             }
             return result
