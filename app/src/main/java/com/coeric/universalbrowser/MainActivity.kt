@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.DownloadManager
 import android.content.Intent
+import android.content.Context
+import android.view.inputmethod.InputMethodManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -41,6 +43,8 @@ class MainActivity : Activity() {
     private var canGoBack = false
     private var canGoForward = false
     private var currentUrl = ""
+    private val browserData by lazy { BrowserDataStore(this) }
+    private var desktopMode = false
     private var lastMediaUrl = ""
     private var lastMediaPromptAt = 0L
 
@@ -120,6 +124,7 @@ class MainActivity : Activity() {
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
                 currentUrl = url ?: currentUrl
+                if (!url.isNullOrBlank()) browserData.recordVisit(url, url)
                 addressBar.setText(url ?: "")
             }
             override fun onCanGoBack(session: GeckoSession, value: Boolean) { canGoBack = value; backButton.alpha = if (value) 1f else 0.35f }
@@ -233,7 +238,9 @@ class MainActivity : Activity() {
         content.addView(featureCard("Web Stores", "Firefox • Chrome • Edge • Opera extension stores", "◎") { showWebStores() }, featureParams())
         content.addView(featureCard("Add-ons", "Browse signed Firefox-compatible extensions", "+") { navigate("https://addons.mozilla.org/android/") }, featureParams())
         content.addView(featureCard("Media downloads", "Play supported media, then download it in one tap", "↓") { showMediaDownloadInfo() }, featureParams())
-        content.addView(featureCard("Private by design", "A lightweight Gecko browser for Android Go devices", "◈") { showAbout() }, featureParams())
+        content.addView(featureCard("Power tools", "Bookmarks, history, desktop site, find, sharing and privacy", "⚙") { showPowerTools() }, featureParams())
+        content.addView(featureCard("Native AI assistant", "Ask about the current page, summarize, explain, rewrite or translate", "AI") { showAiAssistant() }, featureParams())
+        content.addView(featureCard("Private by design", "A full-featured Gecko browser for Android", "◈") { showAbout() }, featureParams())
         content.addView(TextView(this).apply { text = "UNIVERSAL BROWSER  •  GECKOVIEW  •  BUILT FOR ANDROID"; textSize = 10f; letterSpacing = .08f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 152, 168)); gravity = Gravity.CENTER; setPadding(0, 26.dp(), 0, 0) })
         scroll.addView(content)
         return scroll
@@ -424,7 +431,7 @@ class MainActivity : Activity() {
 
     private fun showAbout() {
         AlertDialog.Builder(this).setTitle("Universal Browser")
-            .setMessage("A lightweight Android browser built around GeckoView and WebExtensions.\n\nThe extension system now includes a Chrome/Firefox package scanner and conservative Manifest V3 compatibility preparation.\n\nVersion 0.7.0")
+            .setMessage("A full-featured Gecko browser built around GeckoView and WebExtensions.\n\nThe extension system now includes a Chrome/Firefox package scanner and conservative Manifest V3 compatibility preparation.\n\nVersion 0.7.0")
             .setPositiveButton("Done", null).show()
     }
 
@@ -457,4 +464,112 @@ class MainActivity : Activity() {
         private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"
         private const val NATIVE_APP_NAME = "browser"
     }
+
+    private fun showPowerTools() {
+        val items = arrayOf(
+            "⭐ Add current page to bookmarks", "🔖 Bookmarks", "🕘 History",
+            if (desktopMode) "📱 Switch to mobile site" else "🖥 Desktop site",
+            "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
+            "🧹 Clear browsing data", "⚙ Browser settings"
+        )
+        AlertDialog.Builder(this).setTitle("Universal Browser").setItems(items) { _, which ->
+            when (which) {
+                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2 -> showHistory()
+                3 -> toggleDesktopSite(); 4 -> findInPage(); 5 -> shareCurrentPage()
+                6 -> openDownloads(); 7 -> clearBrowsingData(); 8 -> showBrowserSettings()
+            }
+        }.show()
+    }
+
+    private fun addCurrentBookmark() {
+        if (currentUrl.isBlank()) { toast("Open a page first."); return }
+        browserData.addBookmark(currentUrl, currentUrl); toast("Bookmarked")
+    }
+
+    private fun showBookmarks() {
+        val entries = browserData.bookmarks()
+        if (entries.isEmpty()) { toast("No bookmarks yet."); return }
+        val labels = entries.map { "${it.title}\n${it.url}" }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Bookmarks").setItems(labels) { _, which -> navigate(entries[which].url) }
+            .setNegativeButton("Close", null).show()
+    }
+
+    private fun showHistory() {
+        val entries = browserData.history()
+        if (entries.isEmpty()) { toast("No history yet."); return }
+        val labels = entries.take(100).map { "${it.title}\n${it.url}" }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("History").setItems(labels) { _, which -> navigate(entries[which].url) }
+            .setNeutralButton("Clear") { _, _ -> browserData.clearHistory(); toast("History cleared") }
+            .setNegativeButton("Close", null).show()
+    }
+
+    private fun toggleDesktopSite() {
+        if (!::session.isInitialized) { toast("Open a page first."); return }
+        desktopMode = !desktopMode
+        session.settings.setUserAgentMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+        session.settings.setViewportMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+        session.reload()
+        toast(if (desktopMode) "Desktop site enabled" else "Mobile site enabled")
+    }
+
+    private fun findInPage() {
+        if (!::session.isInitialized) { toast("Open a page first."); return }
+        val input = EditText(this).apply { hint = "Find on this page"; isSingleLine = true }
+        AlertDialog.Builder(this).setTitle("Find in page").setView(input)
+            .setNegativeButton("Close") { _, _ -> session.finder.clear() }
+            .setPositiveButton("Find") { _, _ ->
+                val q = input.text.toString().trim()
+                if (q.isNotEmpty()) {
+                    session.finder.setDisplayFlags(org.mozilla.geckoview.GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL)
+                    session.finder.find(q, org.mozilla.geckoview.GeckoSession.FINDER_FIND_FORWARD)
+                }
+            }.show()
+        input.requestFocus()
+        input.postDelayed({ (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, InputMethodManager.SHOW_IMPLICIT) }, 150)
+    }
+
+    private fun shareCurrentPage() {
+        if (currentUrl.isBlank()) { toast("Open a page first."); return }
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, currentUrl); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser")
+        }, "Share page"))
+    }
+
+    private fun openDownloads() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                type = "resource/folder"
+                data = Uri.parse(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).toURI().toString())
+            })
+        } catch (_: Throwable) { toast("Open the Downloads app to view downloaded files.") }
+    }
+
+    private fun clearBrowsingData() {
+        AlertDialog.Builder(this).setTitle("Clear browsing data")
+            .setMessage("Clear history and site cookies? Downloaded files and bookmarks are kept.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Clear") { _, _ ->
+                browserData.clearHistory(); CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush(); toast("Browsing data cleared")
+            }.show()
+    }
+
+    private fun showBrowserSettings() {
+        AlertDialog.Builder(this).setTitle("Browser settings")
+            .setItems(arrayOf("Extension stores", "Privacy information", "About Universal Browser")) { _, which ->
+                when (which) {
+                    0 -> showWebStores()
+                    1 -> AlertDialog.Builder(this).setTitle("Privacy").setMessage("Universal Browser uses GeckoView and can clear site cookies and browsing history. Extension permissions remain under the Extensions manager.").setPositiveButton("OK", null).show()
+                    2 -> showAbout()
+                }
+            }.show()
+    }
+
+    private fun showAiAssistant() {
+        if (!::session.isInitialized || currentUrl.isBlank()) {
+            AlertDialog.Builder(this).setTitle("Universal AI").setMessage("Open a webpage first. The native AI assistant works with the current page and your prompt through a secure HTTPS provider endpoint.").setPositiveButton("OK", null).show()
+            return
+        }
+        AiAssistantView.show(this, currentUrl)
+    }
+
 }
