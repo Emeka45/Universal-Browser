@@ -5,11 +5,11 @@ import org.mozilla.geckoview.GeckoRuntime
 
 class UniversalBrowserApp : Application() {
     @Volatile
-    private var runtime: GeckoRuntime? = null
+    private var runtimeInstance: GeckoRuntime? = null
 
     @Synchronized
-    fun obtainRuntime(): GeckoRuntime {
-        runtime?.let { return it }
-        return GeckoRuntime.create(this).also { runtime = it }
+    fun getRuntime(): GeckoRuntime {
+        runtimeInstance?.let { return it }
+        return GeckoRuntime.create(this).also { runtimeInstance = it }
     }
 }
