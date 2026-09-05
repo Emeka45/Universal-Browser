@@ -172,7 +172,7 @@ class MainActivity : Activity() {
         forwardButton = toolbarButton("›", 28f) { if (::session.isInitialized && canGoForward) session.goForward() }
         row.addView(backButton); row.addView(forwardButton)
         row.addView(TextView(this).apply { text = "U"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat() }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
-        addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; setSingleLine(); setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
+        addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
         row.addView(toolbarButton("↻", 21f) { if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload() else showHome() })
         row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
@@ -187,7 +187,7 @@ class MainActivity : Activity() {
         hero.addView(TextView(this).apply { text = "U"; textSize = 58f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple), 31.dp()); elevation = 7.dp().toFloat() }, LinearLayout.LayoutParams(104.dp(), 104.dp()).apply { bottomMargin = 17.dp() })
         hero.addView(TextView(this).apply { text = "UNIVERSAL"; textSize = 29f; letterSpacing = .08f; typeface = Typeface.DEFAULT_BOLD; setTextColor(white); gravity = Gravity.CENTER })
         hero.addView(TextView(this).apply { text = "Your web. Your way."; textSize = 15f; setTextColor(Color.rgb(235, 231, 255)); gravity = Gravity.CENTER; setPadding(0, 4.dp(), 0, 20.dp()) })
-        hero.addView(EditText(this).apply { hint = "Search the web or enter a URL"; textSize = 15f; setSingleLine(); setTextColor(ink); setHintTextColor(Color.rgb(125, 123, 140)); setPadding(18.dp(), 0, 18.dp(), 0); background = rounded(white, 19.dp()); elevation = 5.dp().toFloat(); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }, LinearLayout.LayoutParams(-1, 54.dp()))
+        hero.addView(EditText(this).apply { hint = "Search the web or enter a URL"; textSize = 15f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(125, 123, 140)); setPadding(18.dp(), 0, 18.dp(), 0); background = rounded(white, 19.dp()); elevation = 5.dp().toFloat(); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }, LinearLayout.LayoutParams(-1, 54.dp()))
         content.addView(hero)
         content.addView(sectionTitle("Quick access", "Jump back into what matters"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
         val quick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
