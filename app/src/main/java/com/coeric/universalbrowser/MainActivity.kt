@@ -8,9 +8,11 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.view.Gravity
+import android.window.OnBackInvokedCallback
 import android.view.View
 import android.webkit.CookieManager
 import android.widget.EditText
@@ -42,6 +44,16 @@ class MainActivity : Activity() {
     private var lastMediaUrl = ""
     private var lastMediaPromptAt = 0L
 
+    // Browser back navigation: edge swipes and the Android Back gesture must
+    // traverse GeckoView history before leaving the browser.
+    private val systemBackCallback = OnBackInvokedCallback {
+        if (::session.isInitialized && canGoBack) {
+            session.goBack()
+        } else {
+            finish()
+        }
+    }
+
     private val purple = Color.rgb(101, 72, 255)
     private val violet = Color.rgb(145, 74, 255)
     private val darkPurple = Color.rgb(50, 32, 132)
@@ -69,6 +81,27 @@ class MainActivity : Activity() {
         root.addView(browserView, LinearLayout.LayoutParams(-1, 0, 1f))
         browserView.visibility = View.GONE
         setContentView(root)
+
+        // Android 13+ delivers edge-swipe Back through OnBackInvokedDispatcher.
+        // The callback sends the gesture into GeckoView history instead of
+        // allowing the activity to close while a page can still go back.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                systemBackCallback
+            )
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // Android 12 and earlier route the system edge-back gesture here.
+        // Prefer GeckoView history and only leave the activity at the root.
+        if (::session.isInitialized && canGoBack) {
+            session.goBack()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun ensureBrowserReady() {
