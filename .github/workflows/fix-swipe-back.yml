@@ -1,0 +1,108 @@
+name: Fix Swipe Back Navigation
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-build:
+    if: "!contains(github.event.head_commit.message, '[swipe-fix-applied]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Patch Android back navigation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          main = Path('app/src/main/java/com/coeric/universalbrowser/MainActivity.kt')
+          text = main.read_text()
+
+          if 'import android.os.Build' not in text:
+              text = text.replace('import android.os.Bundle\n', 'import android.os.Build\nimport android.os.Bundle\n')
+          if 'import android.window.OnBackInvokedCallback' not in text:
+              text = text.replace('import android.view.Gravity\n', 'import android.view.Gravity\nimport android.window.OnBackInvokedCallback\n')
+
+          if 'private val systemBackCallback = OnBackInvokedCallback' not in text:
+              marker = '    private var lastMediaPromptAt = 0L\n'
+              insertion = '''    private var lastMediaPromptAt = 0L\n\n    // Browser back navigation: edge swipes and the Android Back gesture must\n    // traverse GeckoView history before leaving the browser.\n    private val systemBackCallback = OnBackInvokedCallback {\n        if (::session.isInitialized && canGoBack) {\n            session.goBack()\n        } else {\n            finish()\n        }\n    }\n'''
+              if marker not in text:
+                  raise SystemExit('Could not find MainActivity state marker')
+              text = text.replace(marker, insertion, 1)
+
+          if 'registerOnBackInvokedCallback' not in text:
+              marker = '        setContentView(root)\n'
+              insertion = '''        setContentView(root)\n\n        // Android 13+ delivers edge-swipe Back through OnBackInvokedDispatcher.\n        // The callback sends the gesture into GeckoView history instead of\n        // allowing the activity to close while a page can still go back.\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {\n            onBackInvokedDispatcher.registerOnBackInvokedCallback(\n                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,\n                systemBackCallback\n            )\n        }\n'''
+              if marker not in text:
+                  raise SystemExit('Could not find setContentView marker')
+              text = text.replace(marker, insertion, 1)
+
+          if 'override fun onBackPressed()' not in text:
+              marker = '    private fun ensureBrowserReady() {\n'
+              insertion = '''    @Suppress("DEPRECATION")\n    override fun onBackPressed() {\n        // Android 12 and earlier route the system edge-back gesture here.\n        // Prefer GeckoView history and only leave the activity at the root.\n        if (::session.isInitialized && canGoBack) {\n            session.goBack()\n        } else {\n            super.onBackPressed()\n        }\n    }\n\n    private fun ensureBrowserReady() {\n'''
+              if marker not in text:
+                  raise SystemExit('Could not find ensureBrowserReady marker')
+              text = text.replace(marker, insertion, 1)
+
+          main.write_text(text)
+
+          manifest = Path('app/src/main/AndroidManifest.xml')
+          m = manifest.read_text()
+          if 'android:enableOnBackInvokedCallback=' not in m:
+              m = m.replace('android:allowBackup="true">', 'android:allowBackup="true"\n        android:enableOnBackInvokedCallback="true">')
+          manifest.write_text(m)
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.7.1'
+
+      - name: Verify Gradle
+        run: gradle --version
+
+      - name: Build patched browser
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
+          test -n "$apk"
+          echo "APK: $apk"
+          file "$apk"
+          du -h "$apk"
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt app/src/main/AndroidManifest.xml
+          if git diff --cached --quiet; then
+            echo "No source changes needed."
+            exit 0
+          fi
+          git commit -m "fix: make Android swipe back navigate browser history [swipe-fix-applied]"
+          git push
+
+      - name: Upload patched APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: universal-browser-swipe-back-fix
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
