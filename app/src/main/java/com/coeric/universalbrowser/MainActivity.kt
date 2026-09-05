@@ -45,6 +45,7 @@ class MainActivity : Activity() {
         toolbar.addView(forward)
         toolbar.addView(button("↻") { session.reload() })
         toolbar.addView(button("U") { loadHome() })
+        toolbar.addView(button("C") { installChatwait() })
         toolbar.addView(button("E") { openExtensionPicker() })
         toolbar.addView(button("≡") { showExtensionManager() })
 
@@ -113,6 +114,51 @@ class MainActivity : Activity() {
         }
         addressBar.setText(uri)
         session.loadUri(uri)
+    }
+
+    private fun installChatwait() {
+        val controller = getRuntime().webExtensionController
+        controller.list().accept(
+            { extensions ->
+                val alreadyInstalled = extensions?.any { it.id == CHATWAIT_EXTENSION_ID } == true
+                if (alreadyInstalled) {
+                    runOnUiThread {
+                        Toast.makeText(this, "Chatwait is already installed", Toast.LENGTH_LONG).show()
+                    }
+                    return@accept
+                }
+
+                controller.install(
+                    CHATWAIT_AMO_XPI_URL,
+                    WebExtensionController.INSTALLATION_METHOD_MANAGER
+                ).accept(
+                    { extension ->
+                        runOnUiThread {
+                            val name = extension?.metaData?.name?.takeIf { it.isNotBlank() } ?: "Chatwait"
+                            Toast.makeText(this, "$name installed", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    { error ->
+                        runOnUiThread {
+                            Toast.makeText(
+                                this,
+                                "Chatwait install failed: ${error?.message ?: "unknown error"}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                )
+            },
+            { error ->
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        "Could not check extensions: ${error?.message ?: "unknown error"}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        )
     }
 
     private fun openExtensionPicker() {
@@ -275,6 +321,8 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_EXTENSION = 43
+        private const val CHATWAIT_EXTENSION_ID = "extension@chatwait.com"
+        private const val CHATWAIT_AMO_XPI_URL = "https://addons.mozilla.org/firefox/downloads/latest/chatwait/latest.xpi"
         private val RUNTIME_LOCK = Any()
         @Volatile private var runtime: GeckoRuntime? = null
     }
