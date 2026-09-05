@@ -2,9 +2,9 @@ name: Build Universal Browser
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 9.7.1
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.7.1'
@@ -51,19 +51,6 @@ jobs:
           echo "APK count: $apk_count"
           test "$apk_count" -ge 1
           find app/build/outputs/apk/debug -type f -name '*.apk' -print -exec file {} \; -exec du -h {} \;
-
-      - name: Commit comprehensive browser upgrade
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt app/src/main/java/com/coeric/universalbrowser/BrowserDataStore.kt app/src/main/java/com/coeric/universalbrowser/AiAssistantView.kt
-          if git diff --cached --quiet; then
-            echo "No source changes to commit."
-          else
-            git commit -m "feat: comprehensive browser core and native AI foundation"
-            git push origin HEAD:main
-          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
