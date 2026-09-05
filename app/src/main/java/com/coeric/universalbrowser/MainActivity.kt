@@ -16,6 +16,8 @@ class MainActivity : Activity() {
     private lateinit var session: GeckoSession
     private lateinit var addressBar: EditText
     private lateinit var progress: ProgressBar
+    private var canGoBack = false
+    private var canGoForward = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,14 +32,16 @@ class MainActivity : Activity() {
             setPadding(8, 6, 8, 3)
         }
 
-        toolbar.addView(button("‹") { if (session.canGoBack) session.goBack() })
-        toolbar.addView(button("›") { if (session.canGoForward) session.goForward() })
+        val back = button("‹") { if (canGoBack) session.goBack() }
+        val forward = button("›") { if (canGoForward) session.goForward() }
+        toolbar.addView(back)
+        toolbar.addView(forward)
         toolbar.addView(button("↻") { session.reload() })
         toolbar.addView(button("U") { loadHome() })
 
         addressBar = EditText(this).apply {
             hint = "Search or enter address"
-            singleLine = true
+            setSingleLine(true)
             setPadding(16, 0, 16, 0)
             setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
         }
@@ -65,8 +69,21 @@ class MainActivity : Activity() {
             override fun onLocationChange(
                 session: GeckoSession,
                 url: String?,
-                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>
-            ) { addressBar.setText(url ?: "") }
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean
+            ) {
+                addressBar.setText(url ?: "")
+            }
+
+            override fun onCanGoBack(session: GeckoSession, value: Boolean) {
+                canGoBack = value
+                back.isEnabled = value
+            }
+
+            override fun onCanGoForward(session: GeckoSession, value: Boolean) {
+                canGoForward = value
+                forward.isEnabled = value
+            }
         }
         if (savedInstanceState == null) loadHome()
     }
@@ -93,7 +110,7 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if (session.canGoBack) session.goBack() else super.onBackPressed()
+        if (canGoBack) session.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
