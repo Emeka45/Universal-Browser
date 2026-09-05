@@ -8,7 +8,7 @@ class UniversalBrowserApp : Application() {
     private var runtime: GeckoRuntime? = null
 
     @Synchronized
-    fun getRuntime(): GeckoRuntime {
+    fun obtainRuntime(): GeckoRuntime {
         runtime?.let { return it }
         return GeckoRuntime.create(this).also { runtime = it }
     }
