@@ -7,8 +7,6 @@ on:
 permissions:
   contents: write
 
-auto_cancel: false
-
 jobs:
   repair-and-build:
     runs-on: ubuntu-latest
@@ -56,13 +54,12 @@ jobs:
       - name: Build Redmi A1 ARMv7 debug APK
         run: gradle assembleDebug --no-daemon --stacktrace --info
 
-      - name: Verify generated APK architecture
+      - name: Verify generated APK
         shell: bash
         run: |
           APK=$(find app/build/outputs/apk -type f -name '*.apk' | head -n 1)
           test -n "$APK"
           echo "APK=$APK"
-          unzip -l "$APK" | grep -E 'lib/armeabi-v7a/' >/dev/null || true
 
       - name: Upload repaired APK
         uses: actions/upload-artifact@v4
