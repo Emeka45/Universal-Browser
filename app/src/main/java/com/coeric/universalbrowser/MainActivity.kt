@@ -1,6 +1,8 @@
 package com.coeric.universalbrowser
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -8,9 +10,13 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebExtensionController
 
 class MainActivity : Activity() {
     private lateinit var session: GeckoSession
@@ -22,6 +28,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val runtime = getRuntime()
+        runtime.webExtensionController.promptDelegate = extensionPromptDelegate
         session = GeckoSession()
         session.open(runtime)
 
@@ -38,6 +45,7 @@ class MainActivity : Activity() {
         toolbar.addView(forward)
         toolbar.addView(button("↻") { session.reload() })
         toolbar.addView(button("U") { loadHome() })
+        toolbar.addView(button("E") { openExtensionPicker() })
 
         addressBar = EditText(this).apply {
             hint = "Search or enter address"
@@ -106,9 +114,78 @@ class MainActivity : Activity() {
         session.loadUri(uri)
     }
 
+    private fun openExtensionPicker() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/x-xpinstall"
+        }, REQUEST_EXTENSION)
+    }
+
+    @Deprecated("Deprecated in Android API 33")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_EXTENSION && resultCode == RESULT_OK) {
+            data?.data?.let { installExtension(it) }
+        }
+    }
+
+    private fun installExtension(uri: android.net.Uri) {
+        val controller = getRuntime().webExtensionController
+        controller.install(uri.toString(), WebExtensionController.INSTALLATION_METHOD_FROM_FILE)
+            .accept(
+                { extension ->
+                    runOnUiThread {
+                        val name = extension?.metaData?.name?.takeIf { it.isNotBlank() } ?: extension?.id ?: "extension"
+                        Toast.makeText(this, "$name installed", Toast.LENGTH_LONG).show()
+                    }
+                },
+                { error ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Extension install failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
+    }
+
+    private val extensionPromptDelegate = object : WebExtensionController.PromptDelegate {
+        override fun onInstallPromptRequest(
+            extension: WebExtension,
+            permissions: Array<String>,
+            origins: Array<String>,
+            dataCollectionPermissions: Array<String>
+        ): GeckoResult<WebExtension.PermissionPromptResponse> {
+            val result = GeckoResult<WebExtension.PermissionPromptResponse>()
+            val name = extension.metaData.name.takeIf { it.isNotBlank() } ?: extension.id
+            val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList())
+                .distinct()
+                .joinToString("\n")
+                .ifBlank { "No additional permissions requested." }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    result.complete(WebExtension.PermissionPromptResponse(false, false, false))
+                    return@runOnUiThread
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Install $name?")
+                    .setMessage("Requested permissions:\n\n$requested")
+                    .setNegativeButton("Cancel") { _, _ ->
+                        result.complete(WebExtension.PermissionPromptResponse(false, false, false))
+                    }
+                    .setPositiveButton("Install") { _, _ ->
+                        result.complete(WebExtension.PermissionPromptResponse(true, false, false))
+                    }
+                    .setOnCancelListener {
+                        result.complete(WebExtension.PermissionPromptResponse(false, false, false))
+                    }
+                    .show()
+            }
+            return result
+        }
+    }
+
     private fun button(label: String, action: () -> Unit) = TextView(this).apply {
         text = label
-        textSize = if (label == "U") 18f else 28f
+        textSize = if (label == "U") 18f else 24f
         gravity = Gravity.CENTER
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(44.dp(), 48.dp())
@@ -126,7 +203,7 @@ class MainActivity : Activity() {
     private fun Int.dp() = (this * resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val REQUEST_OPEN = 42
+        private const val REQUEST_EXTENSION = 43
         private val RUNTIME_LOCK = Any()
         @Volatile private var runtime: GeckoRuntime? = null
     }
