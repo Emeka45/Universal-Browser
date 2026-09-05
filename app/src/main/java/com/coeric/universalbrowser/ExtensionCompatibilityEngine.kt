@@ -49,11 +49,7 @@ object ExtensionCompatibilityEngine {
         val permissions = jsonStringArray(manifest.optJSONArray("permissions"))
         val optionalPermissions = jsonStringArray(manifest.optJSONArray("optional_permissions"))
 
-        val hardUnsupported = setOf(
-            "debugger",
-            "declarativeContent",
-            "sidePanel"
-        )
+        val hardUnsupported = setOf("debugger", "declarativeContent", "sidePanel")
         val requestedHard = (permissions + optionalPermissions).filter { it in hardUnsupported }
         if (requestedHard.isNotEmpty()) {
             level = Level.UNSUPPORTED
@@ -77,7 +73,6 @@ object ExtensionCompatibilityEngine {
         if (mv >= 3 && background != null && background.has("service_worker") && !background.has("scripts")) {
             val worker = background.optString("service_worker").trim()
             if (worker.isNotEmpty()) {
-                // MDN documents scripts + service_worker as the cross-browser MV3 fallback.
                 background.put("scripts", JSONArray().put(worker))
                 manifest.put("background", background)
                 transformed = true
@@ -87,7 +82,6 @@ object ExtensionCompatibilityEngine {
         }
 
         if (mv >= 3 && manifest.optJSONArray("web_accessible_resources") != null) {
-            // We do not flatten MV3 W.A.R. objects: modern Firefox understands the MV3 form.
             reasons += "Manifest V3 web-accessible resources were preserved without unsafe conversion."
         }
 
@@ -130,7 +124,7 @@ object ExtensionCompatibilityEngine {
             while (true) {
                 val entry = zis.nextEntry ?: break
                 if (!entry.isDirectory && entry.name.equals("manifest.json", ignoreCase = true)) {
-                    val text = zis.readBytes().toString(StandardCharsets.UTF_8)
+                    val text = String(zis.readBytes(), StandardCharsets.UTF_8)
                     return JSONObject(text)
                 }
             }
@@ -187,13 +181,13 @@ object ExtensionCompatibilityEngine {
             }
             val version = littleEndianInt(header, 4)
             val zipOffset = when (version) {
-                2 -> {
+                2L -> {
                     val publicKeyLength = littleEndianInt(header, 8)
                     val signatureLengthBytes = ByteArray(4)
                     if (input.read(signatureLengthBytes) != 4) throw IllegalArgumentException("Invalid CRX2 header")
                     16L + publicKeyLength + littleEndianInt(signatureLengthBytes, 0)
                 }
-                3 -> {
+                3L -> {
                     val headerSize = littleEndianInt(header, 8)
                     12L + headerSize
                 }
