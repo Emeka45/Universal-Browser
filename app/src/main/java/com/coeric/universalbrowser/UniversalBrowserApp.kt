@@ -45,8 +45,7 @@ class UniversalBrowserApp : Application() {
             .automaticFontSizeAdjustment(false)
             .fontSizeFactor(1.0f)
             .fontInflation(true)
-            // Privacy defaults suitable for a general-purpose browser.
-            .globalPrivacyControl(true)
+            // Keep Gecko's fingerprinting protection enabled by default.
             .fingerprintingProtection(true)
             .build()
 
