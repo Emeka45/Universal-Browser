@@ -35,7 +35,7 @@ field_anchor = '    private var lastMediaPromptAt = 0L\n'
 fields = '''    private var pageZoom = 1.0\n    private var readerMode = false\n    private val browserPrefs by lazy { getSharedPreferences("browser_preferences", MODE_PRIVATE) }\n'''
 replace_required(field_anchor, field_anchor + fields, 'browser tool state')
 
-# Extend the existing power-tools menu without replacing the rest of the browser UI.
+# Extend the power-tools menu with native browser capabilities.
 old_items = '''            "⭐ Add current page to bookmarks", "🔖 Bookmarks", "🕘 History",
             if (desktopMode) "📱 Switch to mobile site" else "🖥 Desktop site",
             "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
@@ -44,7 +44,8 @@ new_items = '''            "⭐ Add current page to bookmarks", "🔖 Bookmarks"
             if (desktopMode) "📱 Switch to mobile site" else "🖥 Desktop site",
             "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
             "🔍 Zoom in", "🔎 Zoom out", "↺ Reset zoom", "📖 Reader mode",
-            "🌐 Search engine", "🧹 Clear browsing data", "⚙ Browser settings"'''
+            "🌐 Search engine", "📄 Save as PDF", "🖨 Print page", "📸 Screenshot",
+            "🛡 Site controls", "🧹 Clear browsing data", "⚙ Browser settings"'''
 replace_required(old_items, new_items, 'power-tools menu')
 
 old_when = '''                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2 -> showHistory()
@@ -54,57 +55,57 @@ new_when = '''                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2
                 3 -> toggleDesktopSite(); 4 -> findInPage(); 5 -> shareCurrentPage()
                 6 -> openDownloads(); 7 -> changePageZoom(0.10); 8 -> changePageZoom(-0.10)
                 9 -> resetPageZoom(); 10 -> toggleReaderMode(); 11 -> chooseSearchEngine()
-                12 -> clearBrowsingData(); 13 -> showBrowserSettings()'''
+                12 -> saveCurrentPageAsPdf(); 13 -> printCurrentPage(); 14 -> capturePageScreenshot()
+                15 -> showCurrentSiteControls(); 16 -> clearBrowsingData(); 17 -> showBrowserSettings()'''
 replace_required(old_when, new_when, 'power-tools actions')
+
+# Use GeckoView's native settings for tracking protection and the real desktop viewport.
+session_anchor = '        session = GeckoSession()\n'
+replace_required(session_anchor, '''        session = GeckoSession(org.mozilla.geckoview.GeckoSessionSettings.Builder()
+            .useTrackingProtection(browserPrefs.getBoolean("tracking_protection", true))
+            .userAgentMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+            .viewportMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+            .build())
+''', 'native Gecko session settings')
+
+# Make search-engine selection actually control searches from the address bar.
+old_search = '            else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"\n'
+new_search = '            else -> buildSearchUrl(input)\n'
+replace_required(old_search, new_search, 'search engine routing')
 
 methods = r'''
 
-    private fun applyPageScript(script: String) {
-        if (!::session.isInitialized) { toast("Open a page first."); return }
-        val encoded = android.util.Base64.encodeToString(script.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-        try {
-            session.loadUri("javascript:(function(){eval(atob('$encoded'));})()")
-        } catch (_: Throwable) {
-            toast("This page does not allow browser presentation changes.")
+    private fun buildSearchUrl(query: String): String {
+        val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+        return when (browserPrefs.getInt("search_engine", 0)) {
+            1 -> "https://www.bing.com/search?q=$encoded"
+            2 -> "https://duckduckgo.com/?q=$encoded"
+            3 -> "https://search.brave.com/search?q=$encoded"
+            else -> "https://www.google.com/search?q=$encoded"
         }
     }
 
-    private fun changePageZoom(delta: Double) {
-        pageZoom = (pageZoom + delta).coerceIn(0.50, 2.50)
-        browserPrefs.edit().putFloat("page_zoom", pageZoom.toFloat()).apply()
-        applyPageScript("document.documentElement.style.zoom='${String.format(Locale.US, "%.2f", pageZoom)}';")
-        toast("Page zoom ${((pageZoom * 100).toInt())}%")
+    private fun saveCurrentPageAsPdf() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        BrowserFeatureCenter.savePageAsPdf(this, session)
     }
 
-    private fun resetPageZoom() {
-        pageZoom = 1.0
-        browserPrefs.edit().putFloat("page_zoom", 1.0f).apply()
-        applyPageScript("document.documentElement.style.zoom='1';")
-        toast("Page zoom reset")
+    private fun printCurrentPage() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        BrowserFeatureCenter.printPage(this, session)
     }
 
-    private fun toggleReaderMode() {
-        readerMode = !readerMode
-        if (readerMode) {
-            applyPageScript("document.documentElement.style.background='#fff';document.body.style.maxWidth='760px';document.body.style.margin='0 auto';document.body.style.padding='24px';document.body.style.fontFamily='serif';document.body.style.lineHeight='1.65';")
-            toast("Reader presentation enabled")
-        } else {
-            applyPageScript("document.documentElement.style.background='';document.body.style.maxWidth='';document.body.style.margin='';document.body.style.padding='';document.body.style.fontFamily='';document.body.style.lineHeight='';")
-            toast("Reader presentation disabled")
-        }
+    private fun capturePageScreenshot() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        BrowserFeatureCenter.captureVisiblePage(this, session)
     }
 
-    private fun chooseSearchEngine() {
-        val engines = arrayOf("Google", "Bing", "DuckDuckGo", "Brave Search")
-        val current = browserPrefs.getInt("search_engine", 0)
-        AlertDialog.Builder(this).setTitle("Default search engine").setSingleChoiceItems(engines, current) { dialog, which ->
-            browserPrefs.edit().putInt("search_engine", which).apply()
-            toast("Search engine: ${engines[which]}")
-            dialog.dismiss()
-        }.setNegativeButton("Close", null).show()
+    private fun showCurrentSiteControls() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        BrowserFeatureCenter.showSiteControls(this, session, currentUrl)
     }
 '''
-if 'private fun changePageZoom(' not in src:
+if 'private fun saveCurrentPageAsPdf()' not in src:
     pos = src.rfind('\n}\n')
     if pos < 0:
         raise SystemExit('MainActivity class terminator not found')
@@ -123,8 +124,16 @@ required = [
     'private fun resetPageZoom()',
     'private fun toggleReaderMode()',
     'private fun chooseSearchEngine()',
+    'private fun buildSearchUrl(query: String)',
+    'private fun saveCurrentPageAsPdf()',
+    'private fun printCurrentPage()',
+    'private fun capturePageScreenshot()',
+    'private fun showCurrentSiteControls()',
     '"🔍 Zoom in"',
     '"📖 Reader mode"',
+    '"📄 Save as PDF"',
+    '"📸 Screenshot"',
+    '.useTrackingProtection(',
 ]
 missing = [needle for needle in required if needle not in src]
 if missing:
