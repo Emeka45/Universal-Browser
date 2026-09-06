@@ -44,7 +44,7 @@ class UniversalBrowserApp : Application() {
             .doubleTapZoomingEnabled(true)
             .automaticFontSizeAdjustment(false)
             .fontSizeFactor(1.0f)
-            .fontInflationEnabled(true)
+            .setFontInflationEnabled(true)
             // Privacy defaults suitable for a general-purpose browser.
             .globalPrivacyControl(true)
             .fingerprintingProtection(true)
