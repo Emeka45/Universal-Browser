@@ -57,11 +57,7 @@ class DownloadService : Service() {
         super.onCreate()
         createChannel()
         if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification("Preparing download", -1, null, null),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+            startForeground(NOTIFICATION_ID, notification("Preparing download", -1, null, null), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIFICATION_ID, notification("Preparing download", -1, null, null))
         }
@@ -103,7 +99,7 @@ class DownloadService : Service() {
         val store = DownloadTaskStore(this)
         val task = store.all().firstOrNull { it.id == id }
         task?.tempPath?.takeIf { it.isNotBlank() }?.let { File(it).delete() }
-        if (task != null) store.update(id, state = "cancelled", bytes = 0L, tempPath = "")
+        if (task != null) store.update(id, state = "cancelled", bytes = 0L, tempPath = "", clearTempPath = true)
         stopRequested = true
         worker?.interrupt()
         stopSelf()
@@ -111,8 +107,7 @@ class DownloadService : Service() {
 
     private fun download(task: DownloadTaskStore.Task) {
         val store = DownloadTaskStore(this)
-        val temp = task.tempPath?.takeIf { it.isNotBlank() }?.let(::File)
-            ?: File(cacheDir, "downloads/${task.id}.part").also { it.parentFile?.mkdirs() }
+        val temp = task.tempPath?.takeIf { it.isNotBlank() }?.let(::File) ?: File(cacheDir, "downloads/${task.id}.part").also { it.parentFile?.mkdirs() }
         store.update(task.id, state = "downloading", tempPath = temp.absolutePath)
         var connection: HttpURLConnection? = null
         try {
@@ -143,31 +138,19 @@ class DownloadService : Service() {
                     }
                     output.flush()
                     if (stopRequested) {
-                        if (store.all().firstOrNull { it.id == task.id }?.state != "cancelled") {
-                            store.update(task.id, state = "paused", bytes = bytes, total = total, tempPath = temp.absolutePath)
-                        }
+                        if (store.all().firstOrNull { it.id == task.id }?.state != "cancelled") store.update(task.id, state = "paused", bytes = bytes, total = total, tempPath = temp.absolutePath)
                         return
                     }
                     store.updateBytes(task.id, bytes, if (total > 0L) total else bytes)
                 }
             }
             publishFile(temp, task)
-            store.update(
-                task.id,
-                state = "completed",
-                bytes = temp.length(),
-                total = temp.length(),
-                localUri = publishedUri.toString(),
-                mimeType = guessMime(task.url),
-                tempPath = ""
-            )
+            store.update(task.id, state = "completed", bytes = temp.length(), total = temp.length(), localUri = publishedUri.toString(), mimeType = guessMime(task.url), clearTempPath = true)
             updateNotification(task.title, temp.length(), temp.length(), task.id, true)
             temp.delete()
         } catch (t: Throwable) {
             val current = store.all().firstOrNull { it.id == task.id }
-            if (current?.state != "paused" && current?.state != "cancelled") {
-                store.updateState(task.id, "failed")
-            }
+            if (current?.state != "paused" && current?.state != "cancelled") store.updateState(task.id, "failed")
             updateNotification(task.title, current?.bytes ?: 0L, current?.total ?: -1L, task.id, true)
         } finally {
             connection?.disconnect()
@@ -188,10 +171,8 @@ class DownloadService : Service() {
                 put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Universal Browser")
                 put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
             }
-            val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: error("Unable to create Downloads entry")
-            contentResolver.openOutputStream(uri)?.use { out -> temp.inputStream().use { it.copyTo(out, 64 * 1024) } }
-                ?: error("Unable to open Downloads entry")
+            val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("Unable to create Downloads entry")
+            contentResolver.openOutputStream(uri)?.use { out -> temp.inputStream().use { it.copyTo(out, 64 * 1024) } } ?: error("Unable to open Downloads entry")
             contentResolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null)
             publishedUri = uri
         } else {
@@ -211,9 +192,7 @@ class DownloadService : Service() {
         CookieManager.getInstance().getCookie(url)?.takeIf(String::isNotBlank)?.let { c.setRequestProperty("Cookie", it) }
         if (referer.isNotBlank()) c.setRequestProperty("Referer", referer)
         if (existing > 0L) c.setRequestProperty("Range", "bytes=$existing-")
-        if (c.responseCode !in 200..299 && c.responseCode != HttpURLConnection.HTTP_PARTIAL) {
-            throw IllegalArgumentException("Download server returned HTTP ${c.responseCode}")
-        }
+        if (c.responseCode !in 200..299 && c.responseCode != HttpURLConnection.HTTP_PARTIAL) throw IllegalArgumentException("Download server returned HTTP ${c.responseCode}")
         return c
     }
 
@@ -229,11 +208,7 @@ class DownloadService : Service() {
     }
 
     private fun createChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(
-                NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW)
-            )
-        }
+        if (Build.VERSION.SDK_INT >= 26) (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW))
     }
 
     private fun notification(title: String, bytes: Long, total: Long?, id: String?): Notification {
@@ -242,21 +217,17 @@ class DownloadService : Service() {
             .setContentTitle(title)
             .setOnlyAlertOnce(true)
             .setOngoing(total == null || bytes < (total ?: Long.MAX_VALUE))
-        if (total != null && total > 0L) {
-            builder.setProgress(100, ((bytes * 100L) / total).toInt().coerceIn(0, 100), false)
-        }
+        if (total != null && total > 0L) builder.setProgress(100, ((bytes * 100L) / total).toInt().coerceIn(0, 100), false)
         if (id != null) {
             val pause = PendingIntent.getService(this, id.hashCode(), Intent(this, DownloadService::class.java).apply { action = ACTION_PAUSE; putExtra(EXTRA_ID, id) }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             val cancel = PendingIntent.getService(this, id.hashCode() + 1, Intent(this, DownloadService::class.java).apply { action = ACTION_CANCEL; putExtra(EXTRA_ID, id) }, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-            builder.addAction(NotificationCompat.Action(0, "Pause", pause))
-                .addAction(NotificationCompat.Action(0, "Cancel", cancel))
+            builder.addAction(NotificationCompat.Action(0, "Pause", pause)).addAction(NotificationCompat.Action(0, "Cancel", cancel))
         }
         return builder.build()
     }
 
     private fun updateNotification(title: String, bytes: Long, total: Long, id: String, done: Boolean) {
-        val notification = notification(title, bytes, if (total > 0L) total else null, if (done) null else id)
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification(title, bytes, if (total > 0L) total else null, if (done) null else id))
     }
 
     @RequiresApi(35)
