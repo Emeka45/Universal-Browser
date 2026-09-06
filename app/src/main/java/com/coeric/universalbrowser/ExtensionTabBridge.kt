@@ -17,7 +17,7 @@ class ExtensionTabBridge(
     private val onSessionClosed: (GeckoSession) -> Unit,
     private val onSessionActivated: (GeckoSession) -> Unit
 ) {
-    private val attached = mutableSetOf<String>()
+    private val attached = linkedMapOf<String, WebExtension>()
 
     fun attachInstalledExtensions() {
         controller.list().accept(
@@ -27,7 +27,8 @@ class ExtensionTabBridge(
     }
 
     fun attach(extension: WebExtension) {
-        if (!attached.add(extension.id)) return
+        if (attached.containsKey(extension.id)) return
+        attached[extension.id] = extension
 
         extension.setTabDelegate(object : WebExtension.TabDelegate {
             override fun onNewTab(
@@ -42,6 +43,7 @@ class ExtensionTabBridge(
                 if (requestedUrl.isNotBlank()) created.loadUri(requestedUrl)
                 if (createDetails.active) {
                     tabs.activate(tabs.indexOf(created))
+                    notifyActive(created)
                     onSessionActivated(created)
                 }
                 return GeckoResult.fromValue(created)
@@ -51,7 +53,17 @@ class ExtensionTabBridge(
         tabs.all().forEach { installSessionDelegate(extension, it.session) }
     }
 
-    fun installSessionDelegate(extension: WebExtension, session: GeckoSession) {
+    fun bindSession(session: GeckoSession) {
+        attached.values.forEach { installSessionDelegate(it, session) }
+    }
+
+    fun notifyActive(activeSession: GeckoSession) {
+        tabs.all().forEach { tab ->
+            controller.setTabActive(tab.session, tab.session === activeSession)
+        }
+    }
+
+    private fun installSessionDelegate(extension: WebExtension, session: GeckoSession) {
         session.getWebExtensionController().setTabDelegate(
             extension,
             object : WebExtension.SessionTabDelegate {
@@ -63,6 +75,7 @@ class ExtensionTabBridge(
                     details.url?.trim()?.takeIf { it.isNotBlank() }?.let { session.loadUri(it) }
                     if (details.active) {
                         tabs.activate(tabs.indexOf(session))
+                        notifyActive(session)
                         onSessionActivated(session)
                     }
                     return GeckoResult.allow
