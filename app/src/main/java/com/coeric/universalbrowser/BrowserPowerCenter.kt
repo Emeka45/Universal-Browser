@@ -13,7 +13,7 @@ import android.widget.Toast
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
 
-/** Central browser power tools: desktop mode, zoom, sharing, page actions and privacy controls. */
+/** Central browser power tools: desktop mode, zoom, reader, translation, sharing and privacy. */
 object BrowserPowerCenter {
     private const val PREFS = "universal_browser_power"
     private const val DESKTOP = "desktop_mode"
@@ -26,25 +26,29 @@ object BrowserPowerCenter {
             return
         }
         val items = arrayOf(
-            "Desktop site", "Page zoom", "Find in page", "Share page", "Save page as PDF",
-            "Screenshot page", "Print page", "Bookmark page", "Site controls",
-            "Privacy & protection", "Web stores", "Downloads", "Settings"
+            "Desktop site", "Page zoom", "Reader mode", "Translate page", "Find in page", "Share page",
+            "Save offline snapshot", "Save page as PDF", "Screenshot page", "Print page", "Bookmark page",
+            "QR code", "Site controls", "Privacy & protection", "Web stores", "Downloads", "Settings"
         )
         AlertDialog.Builder(activity).setTitle("Universal tools").setItems(items) { _, which ->
             when (which) {
                 0 -> toggleDesktop(activity, session, reload)
                 1 -> showZoom(activity, session, reload)
-                2 -> findInPage(activity, session)
-                3 -> share(activity, currentUrlProvider())
-                4 -> BrowserFeatureCenter.savePageAsPdf(activity, session)
-                5 -> BrowserFeatureCenter.captureVisiblePage(activity, session)
-                6 -> BrowserFeatureCenter.printPage(activity, session)
-                7 -> bookmark(activity, currentUrlProvider())
-                8 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
-                9 -> showPrivacy(activity, session)
-                10 -> showStores(activity)
-                11 -> DownloadCenter.show(activity)
-                12 -> BrowserSettingsCenter.show(activity, reload)
+                2 -> BrowserAdvancedTools.openReaderMode(activity, session, currentUrlProvider())
+                3 -> BrowserAdvancedTools.translatePage(activity, session)
+                4 -> findInPage(activity, session)
+                5 -> share(activity, currentUrlProvider())
+                6 -> BrowserAdvancedTools.saveOfflineSnapshot(activity, session)
+                7 -> BrowserFeatureCenter.savePageAsPdf(activity, session)
+                8 -> BrowserFeatureCenter.captureVisiblePage(activity, session)
+                9 -> BrowserFeatureCenter.printPage(activity, session)
+                10 -> bookmark(activity, currentUrlProvider())
+                11 -> BrowserAdvancedTools.showQrGenerator(activity, currentUrlProvider())
+                12 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
+                13 -> showPrivacy(activity, session)
+                14 -> showStores(activity)
+                15 -> DownloadCenter.show(activity)
+                16 -> BrowserSettingsCenter.show(activity, reload)
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -92,8 +96,10 @@ object BrowserPowerCenter {
             .setPositiveButton("Find") { _, _ ->
                 val term = input.text.toString().trim()
                 if (term.isBlank()) return@setPositiveButton
-                val escaped = term.replace("\\", "\\\\").replace("'", "\\'")
-                session.loadUri("javascript:(function(){var q='$escaped';var s=window.getSelection();s.removeAllRanges();var r=document.createRange();var w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);var n;while(n=w.nextNode()){var i=n.nodeValue.toLowerCase().indexOf(q.toLowerCase());if(i>=0){r.setStart(n,i);r.setEnd(n,i+q.length);s.addRange(r);n.parentElement.scrollIntoView({block:'center'});break;}}})()")
+                session.finder.find(term, 0).accept(
+                    { result -> Toast.makeText(activity, if (result.found) "Found match ${result.current}" else "No match found", Toast.LENGTH_SHORT).show() },
+                    { error -> Toast.makeText(activity, "Find failed: ${error?.message ?: "unknown error"}", Toast.LENGTH_SHORT).show() }
+                )
             }.show()
     }
 
@@ -112,7 +118,7 @@ object BrowserPowerCenter {
         val settings = session.settings
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
-            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
+            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"},
             "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear history", "Clear cookies", "Clear site data"
