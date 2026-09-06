@@ -39,14 +39,23 @@ jobs:
           set -euo pipefail
           test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
           test -f app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserPermissionController.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserExtensionCenter.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/ExtensionCompatibilityEngine.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/ExtensionInstallActivity.kt
           test -f app/src/main/java/com/coeric/universalbrowser/BrowserAdvancedTools.kt
           test -f app/src/main/java/com/coeric/universalbrowser/DownloadTaskStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          test -f ai-gateway/src/index.js
+          test -f app/src/main/assets/media-detector/manifest.json
+          test -f app/src/main/assets/media-detector/content.js
+          test -f app/src/main/assets/media-detector/background.js
+          grep -q 'nativeMessagingFromContent' app/src/main/assets/media-detector/manifest.json
           grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'AdvancedMediaDownloadEngine.enqueue' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserAdvancedTools' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
+          grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
+          grep -q 'BrowserExtensionCenter.openInstaller' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
           grep -q '/v1/chat' ai-gateway/src/index.js
           if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
           echo 'Universal Browser source validation passed.'
