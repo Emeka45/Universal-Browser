@@ -3,6 +3,7 @@ package com.coeric.universalbrowser
 import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Bitmap
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -26,8 +27,7 @@ object BrowserAdvancedTools {
             toast(activity, "Open a webpage first")
             return
         }
-        val reader = "about:reader?url=${Uri.encode(url)}"
-        session.loadUri(reader)
+        session.loadUri("about:reader?url=${Uri.encode(url)}")
     }
 
     fun translatePage(activity: Activity, session: GeckoSession) {
@@ -37,21 +37,15 @@ object BrowserAdvancedTools {
             return
         }
         val languages = arrayOf(
-            "English" to "en",
-            "French" to "fr",
-            "Spanish" to "es",
-            "German" to "de",
-            "Portuguese" to "pt",
-            "Arabic" to "ar"
+            "English" to "en", "French" to "fr", "Spanish" to "es",
+            "German" to "de", "Portuguese" to "pt", "Arabic" to "ar"
         )
         AlertDialog.Builder(activity)
             .setTitle("Translate page to")
             .setItems(languages.map { it.first }.toTypedArray()) { _, which ->
-                val target = languages[which].second
                 val options = TranslationsController.SessionTranslation.TranslationOptions.Builder()
-                    .downloadModel(true)
-                    .build()
-                translation.translate("", target, options).accept(
+                    .downloadModel(true).build()
+                translation.translate("", languages[which].second, options).accept(
                     { toast(activity, "Translation started") },
                     { error -> toast(activity, "Translation failed: ${error?.message ?: "unavailable"}") }
                 )
@@ -66,9 +60,31 @@ object BrowserAdvancedTools {
             .show()
     }
 
+    /** Saves an actual standalone offline reader snapshot using Gecko's page extractor. */
     fun saveOfflineSnapshot(activity: Activity, session: GeckoSession) {
-        BrowserFeatureCenter.savePageAsPdf(activity, session)
-        toast(activity, "Offline snapshot saved as PDF")
+        val extractor = session.getSessionPageExtractor()
+        extractor.getPageContent().accept(
+            { content ->
+                val text = content?.toString()?.trim().orEmpty()
+                if (text.isBlank()) {
+                    toast(activity, "This page could not be extracted for offline reading")
+                    return@accept
+                }
+                val title = try { Uri.parse(session.currentUri?.toString().orEmpty()).host ?: "Offline page" } catch (_: Throwable) { "Offline page" }
+                val url = session.currentUri?.toString().orEmpty()
+                try {
+                    val file = OfflinePageStore.save(activity, title, url, text)
+                    toast(activity, "Offline page saved: ${file.name}")
+                } catch (error: Throwable) {
+                    toast(activity, "Offline save failed: ${error.message ?: "unknown error"}")
+                }
+            },
+            { error -> toast(activity, "Offline extraction failed: ${error?.message ?: "unknown error"}") }
+        )
+    }
+
+    fun showQrScanner(activity: Activity) {
+        activity.startActivity(Intent(activity, QrScannerActivity::class.java))
     }
 
     fun showQrGenerator(activity: Activity, value: String) {
@@ -82,18 +98,17 @@ object BrowserAdvancedTools {
             for (x in 0 until 720) for (y in 0 until 720) {
                 bitmap.setPixel(x, y, if (matrix[x, y]) 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
             }
-            ImageView(activity).apply {
+            val image = ImageView(activity).apply {
                 setImageBitmap(bitmap)
                 adjustViewBounds = true
                 setPadding(24, 24, 24, 24)
-            }.also { image ->
-                AlertDialog.Builder(activity)
-                    .setTitle("Universal QR")
-                    .setView(image)
-                    .setPositiveButton("Save") { _, _ -> saveQr(activity, bitmap) }
-                    .setNegativeButton("Close", null)
-                    .show()
             }
+            AlertDialog.Builder(activity)
+                .setTitle("Universal QR")
+                .setView(image)
+                .setPositiveButton("Save") { _, _ -> saveQr(activity, bitmap) }
+                .setNegativeButton("Close", null)
+                .show()
         } catch (error: Throwable) {
             toast(activity, "QR generation failed: ${error.message ?: "unknown error"}")
         }
