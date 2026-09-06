@@ -16,8 +16,15 @@ object BrowserPermissionController {
 
     fun attach(activity: Activity, session: GeckoSession) {
         session.permissionDelegate = object : GeckoSession.PermissionDelegate {
-            override fun onAndroidPermissionsRequest(session: GeckoSession, permissions: Array<String>, callback: GeckoSession.PermissionDelegate.Callback) {
-                val missing = permissions.filter { ActivityCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED }
+            override fun onAndroidPermissionsRequest(
+                session: GeckoSession,
+                permissions: Array<String>?,
+                callback: GeckoSession.PermissionDelegate.Callback
+            ) {
+                val requested = permissions ?: emptyArray()
+                val missing = requested.filter {
+                    ActivityCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED
+                }
                 if (missing.isEmpty()) callback.grant() else {
                     ActivityCompat.requestPermissions(activity, missing.toTypedArray(), REQUEST)
                     Toast.makeText(activity, "Permission requested by the current site", Toast.LENGTH_SHORT).show()
@@ -25,7 +32,10 @@ object BrowserPermissionController {
                 }
             }
 
-            override fun onContentPermissionRequest(session: GeckoSession, perm: GeckoSession.PermissionDelegate.ContentPermission): GeckoResult<Int>? {
+            override fun onContentPermissionRequest(
+                session: GeckoSession,
+                perm: GeckoSession.PermissionDelegate.ContentPermission
+            ): GeckoResult<Int>? {
                 if (session.settings.usePrivateMode) return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
                 val origin = originOf(perm.uri)
                 val permissionKey = perm.permission.toString()
@@ -45,7 +55,13 @@ object BrowserPermissionController {
                 return result
             }
 
-            override fun onMediaPermissionRequest(session: GeckoSession, uri: String, video: Array<GeckoSession.PermissionDelegate.MediaSource>?, audio: Array<GeckoSession.PermissionDelegate.MediaSource>?, callback: GeckoSession.PermissionDelegate.MediaCallback) {
+            override fun onMediaPermissionRequest(
+                session: GeckoSession,
+                uri: String,
+                video: Array<GeckoSession.PermissionDelegate.MediaSource>?,
+                audio: Array<GeckoSession.PermissionDelegate.MediaSource>?,
+                callback: GeckoSession.PermissionDelegate.MediaCallback
+            ) {
                 val origin = originOf(uri)
                 if (session.settings.usePrivateMode) { callback.reject(); return }
                 android.app.AlertDialog.Builder(activity).setTitle("Media access")
