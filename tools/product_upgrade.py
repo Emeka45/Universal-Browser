@@ -14,7 +14,6 @@ def replace_required(needle: str, replacement: str, label: str):
     src = src.replace(needle, replacement, 1)
 
 
-# Keep the repository source identical to the production download behavior.
 old_download = '''    private fun openDownloads() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW).apply {
@@ -30,12 +29,13 @@ new_download = '''    private fun openDownloads() {
 '''
 replace_required(old_download, new_download, 'Download Center integration')
 
-# Add persistent browser-tool state.
 field_anchor = '    private var lastMediaPromptAt = 0L\n'
-fields = '''    private var pageZoom = 1.0\n    private var readerMode = false\n    private val browserPrefs by lazy { getSharedPreferences("browser_preferences", MODE_PRIVATE) }\n'''
+fields = '''    private var pageZoom = 1.0
+    private var readerMode = false
+    private val browserPrefs by lazy { getSharedPreferences("browser_preferences", MODE_PRIVATE) }
+'''
 replace_required(field_anchor, field_anchor + fields, 'browser tool state')
 
-# Extend the power-tools menu with native browser capabilities.
 old_items = '''            "⭐ Add current page to bookmarks", "🔖 Bookmarks", "🕘 History",
             if (desktopMode) "📱 Switch to mobile site" else "🖥 Desktop site",
             "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
@@ -59,7 +59,6 @@ new_when = '''                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2
                 15 -> showCurrentSiteControls(); 16 -> clearBrowsingData(); 17 -> showBrowserSettings()'''
 replace_required(old_when, new_when, 'power-tools actions')
 
-# Use GeckoView's native settings for tracking protection and the real desktop viewport.
 session_anchor = '        session = GeckoSession()\n'
 replace_required(session_anchor, '''        session = GeckoSession(org.mozilla.geckoview.GeckoSessionSettings.Builder()
             .useTrackingProtection(browserPrefs.getBoolean("tracking_protection", true))
@@ -68,7 +67,6 @@ replace_required(session_anchor, '''        session = GeckoSession(org.mozilla.g
             .build())
 ''', 'native Gecko session settings')
 
-# Make search-engine selection actually control searches from the address bar.
 old_search = '            else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"\n'
 new_search = '            else -> buildSearchUrl(input)\n'
 replace_required(old_search, new_search, 'search engine routing')
@@ -83,6 +81,46 @@ methods = r'''
             3 -> "https://search.brave.com/search?q=$encoded"
             else -> "https://www.google.com/search?q=$encoded"
         }
+    }
+
+    private fun applyPageScript(script: String) {
+        if (!::session.isInitialized || currentUrl.isBlank()) return
+        session.loadUri("javascript:(function(){try{$script}catch(e){}})()")
+    }
+
+    private fun changePageZoom(delta: Double) {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        pageZoom = (pageZoom + delta).coerceIn(0.50, 2.00)
+        browserPrefs.edit().putFloat("page_zoom", pageZoom.toFloat()).apply()
+        applyPageScript("document.documentElement.style.zoom='${pageZoom}';document.body.style.zoom='${pageZoom}';")
+        toast("Page zoom: ${(pageZoom * 100).toInt()}%")
+    }
+
+    private fun resetPageZoom() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        pageZoom = 1.0
+        browserPrefs.edit().putFloat("page_zoom", 1.0f).apply()
+        applyPageScript("document.documentElement.style.zoom='1';document.body.style.zoom='1';")
+        toast("Page zoom reset")
+    }
+
+    private fun toggleReaderMode() {
+        if (!::session.isInitialized || currentUrl.isBlank()) { toast("Open a page first."); return }
+        readerMode = !readerMode
+        val css = if (readerMode) "document.body.style.maxWidth='760px';document.body.style.margin='auto';document.body.style.padding='24px';document.body.style.fontSize='1.15em';document.body.style.lineHeight='1.65';" else "document.body.style.maxWidth='';document.body.style.margin='';document.body.style.padding='';document.body.style.fontSize='';document.body.style.lineHeight='';"
+        applyPageScript(css)
+        toast(if (readerMode) "Reader presentation enabled" else "Reader presentation disabled")
+    }
+
+    private fun chooseSearchEngine() {
+        val names = arrayOf("Google", "Bing", "DuckDuckGo", "Brave Search")
+        val selected = browserPrefs.getInt("search_engine", 0).coerceIn(0, names.lastIndex)
+        AlertDialog.Builder(this).setTitle("Search engine")
+            .setSingleChoiceItems(names, selected) { dialog, which ->
+                browserPrefs.edit().putInt("search_engine", which).apply()
+                dialog.dismiss()
+                toast("Search engine: ${names[which]}")
+            }.setNegativeButton("Cancel", null).show()
     }
 
     private fun saveCurrentPageAsPdf() {
@@ -111,12 +149,10 @@ if 'private fun saveCurrentPageAsPdf()' not in src:
         raise SystemExit('MainActivity class terminator not found')
     src = src[:pos] + methods + src[pos:]
 
-# Restore saved zoom after activity creation.
 create_anchor = '        super.onCreate(savedInstanceState)\n'
 restore = '        pageZoom = browserPrefs.getFloat("page_zoom", 1.0f).toDouble()\n'
 replace_required(create_anchor, create_anchor + restore, 'saved zoom restoration')
 
-# Fail closed if any expected product feature is missing after transformation.
 required = [
     'DownloadCenter.show(this)',
     'private var pageZoom = 1.0',
