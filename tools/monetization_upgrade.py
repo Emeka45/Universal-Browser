@@ -9,16 +9,6 @@ MAIN = ROOT / "app/src/main/java/com/coeric/universalbrowser/MainActivity.kt"
 MONETIZATION = ROOT / "app/src/main/java/com/coeric/universalbrowser/MonetizationCenter.kt"
 
 
-def replace_once(path, old, new):
-    text = path.read_text()
-    if new in text:
-        return
-    count = text.count(old)
-    if count != 1:
-        raise SystemExit(f"Expected exactly one anchor in {path}: {old[:80]!r}; found {count}")
-    path.write_text(text.replace(old, new, 1))
-
-
 gradle = GRADLE.read_text()
 if 'com.google.android.gms:play-services-ads:25.4.0' not in gradle:
     gradle = gradle.replace(
@@ -60,7 +50,7 @@ if 'com.google.android.gms.ads.MobileAds' not in app:
     )
     APP.write_text(app)
 
-MONETIZATION.write_text('''package com.coeric.universalbrowser\n\nimport android.app.Activity\nimport android.view.ViewGroup\nimport android.widget.FrameLayout\nimport com.google.android.gms.ads.AdRequest\nimport com.google.android.gms.ads.AdSize\nimport com.google.android.gms.ads.AdView\n\n/**\n * Lightweight monetization layer. Test IDs are used by default so development\n * builds never generate accidental production traffic. Replace the resource\n * IDs in res/values/strings.xml before publishing a revenue-generating build.\n */\nobject MonetizationCenter {\n    fun createBanner(activity: Activity): AdView {\n        return AdView(activity).apply {\n            adUnitId = activity.getString(R.string.admob_banner_unit_id)\n            setAdSize(AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, activity.resources.displayMetrics.widthPixels))\n            layoutParams = FrameLayout.LayoutParams(\n                ViewGroup.LayoutParams.MATCH_PARENT,\n                ViewGroup.LayoutParams.WRAP_CONTENT\n            )\n            loadAd(AdRequest.Builder().build())\n        }\n    }\n}\n''')
+MONETIZATION.write_text('''package com.coeric.universalbrowser\n\nimport android.app.Activity\nimport android.view.ViewGroup\nimport android.widget.FrameLayout\nimport com.google.android.gms.ads.AdRequest\nimport com.google.android.gms.ads.AdSize\nimport com.google.android.gms.ads.AdView\n\n/**\n * Lightweight monetization layer. Test IDs are used by default so development\n * builds never generate accidental production traffic. Replace the resource\n * IDs in res/values/strings.xml before publishing a revenue-generating build.\n */\nobject MonetizationCenter {\n    fun createBanner(activity: Activity): AdView {\n        return AdView(activity).apply {\n            adUnitId = activity.getString(R.string.admob_banner_unit_id)\n            // Adaptive banner width is expressed in dp, not physical pixels.\n            setAdSize(AdSize.getLargeAnchoredAdaptiveBannerAdSize(activity, 360))\n            layoutParams = FrameLayout.LayoutParams(\n                ViewGroup.LayoutParams.MATCH_PARENT,\n                ViewGroup.LayoutParams.WRAP_CONTENT\n            )\n            loadAd(AdRequest.Builder().build())\n        }\n    }\n}\n''')
 
 main = MAIN.read_text()
 if 'private var monetizationBanner' not in main:
