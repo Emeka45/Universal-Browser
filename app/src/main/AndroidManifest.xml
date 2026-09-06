@@ -10,6 +10,9 @@
         android:hardwareAccelerated="true"
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true">
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="@string/admob_app_id" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
