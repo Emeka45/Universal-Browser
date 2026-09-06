@@ -10,18 +10,21 @@ android {
         applicationId = "com.coeric.universalbrowser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.6.0"
+        versionCode = 7
+        versionName = "0.7.0"
 
-        // Redmi A1 compatibility: ship one directly installable ARMv7 APK.
+        // Ship both low-end ARMv7 and modern ARM64 builds from the same source.
         ndk {
-            abiFilters += "armeabi-v7a"
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a")
         }
     }
 
     splits {
         abi {
-            isEnable = false
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
         }
     }
 
