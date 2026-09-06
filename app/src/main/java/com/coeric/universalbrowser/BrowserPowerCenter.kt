@@ -28,7 +28,7 @@ object BrowserPowerCenter {
         val items = arrayOf(
             "Desktop site", "Page zoom", "Find in page", "Share page", "Save page as PDF",
             "Screenshot page", "Print page", "Bookmark page", "Site controls",
-            "Privacy & protection", "Web stores", "Downloads"
+            "Privacy & protection", "Web stores", "Downloads", "Settings"
         )
         AlertDialog.Builder(activity).setTitle("Universal tools").setItems(items) { _, which ->
             when (which) {
@@ -43,7 +43,8 @@ object BrowserPowerCenter {
                 8 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
                 9 -> showPrivacy(activity, session)
                 10 -> showStores(activity)
-                11 -> showDownloads(activity)
+                11 -> DownloadCenter.show(activity)
+                12 -> BrowserSettingsCenter.show(activity, reload)
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -53,6 +54,7 @@ object BrowserPowerCenter {
         val desktop = prefs.getBoolean(DESKTOP, false)
         session.settings.setUserAgentMode(if (desktop) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
         session.settings.setViewportMode(if (desktop) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+        BrowserSecurityController.applySessionPolicy(activity, session)
     }
 
     private fun toggleDesktop(activity: Activity, session: GeckoSession, reload: () -> Unit) {
@@ -111,29 +113,21 @@ object BrowserPowerCenter {
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
             "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
-            "Clear history",
-            "Clear cookies",
-            "Clear site data"
+            "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
+            "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
+            "Clear history", "Clear cookies", "Clear site data"
         )
         AlertDialog.Builder(activity).setTitle("Privacy & protection").setItems(items) { _, which ->
             when (which) {
                 0 -> { settings.useTrackingProtection = !settings.useTrackingProtection; Toast.makeText(activity, "Tracking protection updated", Toast.LENGTH_SHORT).show() }
                 1 -> { settings.allowJavascript = !settings.allowJavascript; Toast.makeText(activity, "JavaScript setting updated", Toast.LENGTH_SHORT).show() }
-                2 -> { BrowserDataStore(activity).clearHistory(); Toast.makeText(activity, "History cleared", Toast.LENGTH_SHORT).show() }
-                3 -> { CookieManager.getInstance().removeAllCookies { runOnUiThreadSafe(activity) { Toast.makeText(activity, "Cookies cleared", Toast.LENGTH_SHORT).show() } }; CookieManager.getInstance().flush() }
-                4 -> {
-                    BrowserDataStore(activity).clearHistory()
-                    CookieManager.getInstance().removeAllCookies(null)
-                    CookieManager.getInstance().removeSessionCookies(null)
-                    CookieManager.getInstance().flush()
-                    Toast.makeText(activity, "Local browser data cleared", Toast.LENGTH_SHORT).show()
-                }
+                2 -> { val enabled = !BrowserSecurityController.isHttpsOnly(activity); BrowserSecurityController.setHttpsOnly(activity, enabled); Toast.makeText(activity, "HTTPS-only ${if (enabled) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show() }
+                3 -> { val enabled = !BrowserSecurityController.blockThirdPartyCookies(activity); BrowserSecurityController.setBlockThirdPartyCookies(activity, enabled); Toast.makeText(activity, "Third-party cookie blocking ${if (enabled) "enabled" else "disabled"}", Toast.LENGTH_SHORT).show() }
+                4 -> { BrowserDataStore(activity).clearHistory(); Toast.makeText(activity, "History cleared", Toast.LENGTH_SHORT).show() }
+                5 -> { CookieManager.getInstance().removeAllCookies { activity.runOnUiThread { Toast.makeText(activity, "Cookies cleared", Toast.LENGTH_SHORT).show() } }; CookieManager.getInstance().flush() }
+                6 -> { BrowserDataStore(activity).clearHistory(); BrowserSecurityController.clearBrowsingData(); Toast.makeText(activity, "Local browser data cleared", Toast.LENGTH_SHORT).show() }
             }
         }.setNegativeButton("Close", null).show()
-    }
-
-    private fun runOnUiThreadSafe(activity: Activity, action: () -> Unit) {
-        activity.runOnUiThread(action)
     }
 
     private fun showStores(activity: Activity) {
@@ -141,10 +135,5 @@ object BrowserPowerCenter {
         val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
         AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which]))) }
             .setNegativeButton("Close", null).show()
-    }
-
-    private fun showDownloads(activity: Activity) {
-        try { activity.startActivity(Intent("android.intent.action.VIEW_DOWNLOADS")) }
-        catch (_: Throwable) { Toast.makeText(activity, "Open the Android Downloads app to view downloads", Toast.LENGTH_SHORT).show() }
     }
 }
