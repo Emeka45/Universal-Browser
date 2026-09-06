@@ -1,0 +1,40 @@
+name: Complete browser upgrade
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/complete_browser_upgrade.py'
+      - '.github/workflows/complete-browser-upgrade.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply browser upgrade
+        run: python3 tools/complete_browser_upgrade.py
+
+      - name: Commit integrated upgrade
+        run: |
+          git config user.name "Universal Browser Bot"
+          git config user.email "actions@github.com"
+          git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
+          if git diff --cached --quiet; then
+            echo "No integration changes needed"
+          else
+            git commit -m "feat: integrate complete browser power suite"
+            git push origin HEAD:main
+          fi
+
+      - name: Build and validate
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon
