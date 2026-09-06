@@ -50,7 +50,7 @@ class BrowserTabManager(
 
     private fun updateUrlFromState(tab: Tab, state: GeckoSession.SessionState) {
         val index = state.currentIndex
-        if (index >= 0 && index < state.size()) {
+        if (index >= 0 && index < state.size) {
             tab.url = state[index].uri ?: tab.url
             tab.label = state[index].title ?: tab.label
         }
