@@ -2,7 +2,6 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -72,34 +71,24 @@ class MainActivity : Activity() {
         restoreTabs()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            onBackInvokedDispatcher.registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, systemBackCallback
-            )
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, systemBackCallback)
         }
     }
 
     private val systemBackCallback = android.window.OnBackInvokedCallback {
-        when {
-            canGoBack -> activeSession()?.goBack()
-            homePanel.visibility == View.VISIBLE -> finish()
-            else -> showHome()
-        }
+        when { canGoBack -> activeSession()?.goBack(); homePanel.visibility == View.VISIBLE -> finish(); else -> showHome() }
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        when {
-            canGoBack -> activeSession()?.goBack()
-            homePanel.visibility == View.VISIBLE -> super.onBackPressed()
-            else -> showHome()
-        }
+        when { canGoBack -> activeSession()?.goBack(); homePanel.visibility == View.VISIBLE -> super.onBackPressed(); else -> showHome() }
     }
 
     private fun restoreTabs() {
         val restored = tabManager.restorePersistedTabs()
         val tab = tabManager.active() ?: restored.firstOrNull() ?: tabManager.createAndOpen(false)
         attachTab(tab)
-        if (restored.isEmpty()) showHome() else if (tab.url.isBlank()) showHome() else showPage()
+        if (restored.isEmpty() || tab.url.isBlank()) showHome() else showPage()
         updateTabButton()
     }
 
@@ -147,15 +136,14 @@ class MainActivity : Activity() {
         BrowserPowerCenter.applyPreferences(this, tab.session)
         currentUrl = tab.url
         addressBar.setText(tab.url)
+        canGoBack = false; canGoForward = false
         tab.session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCrash(session: GeckoSession) { recoverActiveTab("The page process stopped and was restarted.") }
             override fun onKill(session: GeckoSession) { recoverActiveTab("Android stopped the page process; the tab was recovered.") }
         }
         tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
-            override fun onProgressChange(session: GeckoSession, value: Int) {
-                if (session === activeSession()) { progress.progress = value; progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE }
-            }
-            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) { tabManager.persist(); updateChromeState() }
+            override fun onProgressChange(session: GeckoSession, value: Int) { if (session === activeSession()) { progress.progress = value; progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE } }
+            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) { tabManager.updateSessionState(session, state); updateChromeState() }
         }
         tab.session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
@@ -173,30 +161,22 @@ class MainActivity : Activity() {
     }
 
     private fun installMediaDetector(session: GeckoSession) {
-        getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept(
-            { extension -> extension?.let { session.getWebExtensionController().setMessageDelegate(it, mediaMessageDelegate, NATIVE_APP_NAME) } },
-            { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
-        )
+        getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept({ extension -> extension?.let { session.getWebExtensionController().setMessageDelegate(it, mediaMessageDelegate, NATIVE_APP_NAME) } }, { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) })
     }
 
     private val mediaMessageDelegate = object : WebExtension.MessageDelegate {
         override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
             if (nativeApp != NATIVE_APP_NAME || sender.session !== activeSession() || message !is JSONObject) return null
             if (message.optString("type") != "media-playable") return null
-            val url = message.optString("url").trim()
-            if (!AdvancedMediaDownloadEngine.isSupported(url)) return null
-            runOnUiThread { offerMediaDownload(url, message.optString("title").trim().ifBlank { "Video" }) }
-            return null
+            val url = message.optString("url").trim(); if (!AdvancedMediaDownloadEngine.isSupported(url)) return null
+            runOnUiThread { offerMediaDownload(url, message.optString("title").trim().ifBlank { "Video" }) }; return null
         }
     }
 
     private fun offerMediaDownload(url: String, title: String) {
-        val now = System.currentTimeMillis()
-        if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
+        val now = System.currentTimeMillis(); if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
         lastMediaUrl = url; lastMediaPromptAt = now
-        AlertDialog.Builder(this).setTitle("Media ready to download").setMessage(title.take(100)).setNegativeButton("Not now", null).setPositiveButton("Download") { _, _ ->
-            AdvancedMediaDownloadEngine.enqueue(this, url, title, currentUrl, { toast("Media download started") }, { result -> toast("${result.kind} saved: ${result.fileName}") }, { error -> toast("Media download failed: $error") })
-        }.show()
+        AlertDialog.Builder(this).setTitle("Media ready to download").setMessage(title.take(100)).setNegativeButton("Not now", null).setPositiveButton("Download") { _, _ -> AdvancedMediaDownloadEngine.enqueue(this, url, title, currentUrl, { toast("Media download started") }, { result -> toast("${result.kind} saved: ${result.fileName}") }, { error -> toast("Media download failed: $error") }) }.show()
     }
 
     private fun navigate(raw: String) {
@@ -206,20 +186,15 @@ class MainActivity : Activity() {
         currentUrl = uri; tab.url = uri; tab.session.setActive(true); tab.session.setFocused(true); tab.session.loadUri(uri); addressBar.setText(uri); showPage()
     }
 
-    private fun newTab(privateMode: Boolean) {
-        val tab = tabManager.createAndOpen(privateMode); attachTab(tab); showHome(); updateTabButton(); toast(if (privateMode) "Private tab opened" else "New tab opened")
-    }
+    private fun newTab(privateMode: Boolean) { val tab = tabManager.createAndOpen(privateMode); attachTab(tab); showHome(); updateTabButton(); toast(if (privateMode) "Private tab opened" else "New tab opened") }
 
     private fun switchTab(index: Int) {
         val tab = tabManager.activate(index) ?: return
-        canGoBack = false; canGoForward = false; attachTab(tab)
-        if (tab.url.isBlank()) showHome() else showPage()
-        updateTabButton()
+        attachTab(tab); if (tab.url.isBlank()) showHome() else showPage(); updateTabButton()
     }
 
     private fun closeTab(index: Int) {
-        val next = tabManager.close(index)
-        canGoBack = false; canGoForward = false
+        val next = tabManager.close(index); canGoBack = false; canGoForward = false
         if (next == null) { val created = tabManager.createAndOpen(false); attachTab(created); showHome() } else { attachTab(next); if (next.url.isBlank()) showHome() else showPage() }
         updateTabButton()
     }
@@ -231,10 +206,7 @@ class MainActivity : Activity() {
             val active = if (index == tabManager.activeIndex()) " ✓" else ""
             "$marker${tab.label.ifBlank { tab.url.ifBlank { "New tab" } }}$active\n${tab.url.ifBlank { "New tab" }}"
         }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Tabs (${tabs.size})").setItems(labels) { _, which -> switchTab(which) }
-            .setNeutralButton("+ New tab") { _, _ -> newTab(false) }
-            .setPositiveButton("Private tab") { _, _ -> newTab(true) }
-            .setNegativeButton("Close", null).show()
+        AlertDialog.Builder(this).setTitle("Tabs (${tabs.size})").setItems(labels) { _, which -> switchTab(which) }.setNeutralButton("+ New tab") { _, _ -> newTab(false) }.setPositiveButton("Private tab") { _, _ -> newTab(true) }.setNegativeButton("Close", null).show()
     }
 
     private fun showHome() { homePanel.visibility = View.VISIBLE; browserView.visibility = View.GONE; addressBar.setText(""); updateTabButton() }
@@ -243,15 +215,11 @@ class MainActivity : Activity() {
     private fun updateChromeState() { backButton.alpha = if (canGoBack) 1f else .35f; forwardButton.alpha = if (canGoForward) 1f else .35f; updateTabButton() }
     private fun updateTabButton() { if (::tabButton.isInitialized) tabButton.text = tabManager.count().toString() }
 
-    private fun recoverActiveTab(message: String) {
-        runOnUiThread { val tab = tabManager.active() ?: return@runOnUiThread; try { if (!tab.session.isOpen) tab.session.open(getRuntime()); if (tab.url.isNotBlank()) tab.session.loadUri(tab.url); toast(message) } catch (_: Throwable) { showHome() } }
-    }
+    private fun recoverActiveTab(message: String) { runOnUiThread { val tab = tabManager.active() ?: return@runOnUiThread; try { if (!tab.session.isOpen) tab.session.open(getRuntime()); if (tab.url.isNotBlank()) tab.session.loadUri(tab.url); toast(message) } catch (_: Throwable) { showHome() } } }
 
     private fun showBrowserMenu() {
         val items = arrayOf("Home", "New tab", "New private tab", "Tabs", "Downloads", "Extensions", "Web Stores", "Power tools", "Universal AI", "About Universal")
-        AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which -> when (which) {
-            0 -> showHome(); 1 -> newTab(false); 2 -> newTab(true); 3 -> showTabs(); 4 -> DownloadCenter.show(this); 5 -> showExtensions(); 6 -> showWebStores(); 7 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }); 8 -> showAiAssistant(); 9 -> showAbout()
-        } }.show()
+        AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which -> when (which) { 0 -> showHome(); 1 -> newTab(false); 2 -> newTab(true); 3 -> showTabs(); 4 -> DownloadCenter.show(this); 5 -> showExtensions(); 6 -> showWebStores(); 7 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }); 8 -> showAiAssistant(); 9 -> showAbout() } }.show()
     }
 
     private fun showExtensions() {
