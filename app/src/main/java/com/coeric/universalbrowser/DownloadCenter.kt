@@ -6,7 +6,6 @@ import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -209,7 +208,6 @@ object DownloadCenter {
         DownloadManager.ERROR_DEVICE_NOT_FOUND -> "The download storage device is unavailable."
         DownloadManager.ERROR_CANNOT_RESUME -> "The download could not be resumed."
         DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "A file with this name already exists."
-        DownloadManager.ERROR_BLOCKED -> "Android blocked this download."
         else -> "Android Download Manager could not complete the download (code $reason)."
     }
 }
