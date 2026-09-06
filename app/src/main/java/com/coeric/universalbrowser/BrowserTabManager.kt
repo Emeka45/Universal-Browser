@@ -18,6 +18,7 @@ class BrowserTabManager(
     )
 
     private val tabs = mutableListOf<Tab>()
+    private val sessionStates = mutableMapOf<Long, String>()
     private var nextId = 1L
     private var activeIndex = -1
 
@@ -30,11 +31,29 @@ class BrowserTabManager(
         val settings = GeckoSessionSettings.Builder()
             .usePrivateMode(privateMode)
             .useTrackingProtection(true)
+            .suspendMediaWhenInactive(true)
             .build()
         val tab = Tab(nextId++, GeckoSession(settings), privateMode)
+        tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
+                if (!tab.privateMode) {
+                    sessionState.toString()?.let { sessionStates[tab.id] = it }
+                    updateUrlFromState(tab, sessionState)
+                    persist()
+                }
+            }
+        }
         tabs.add(tab)
         activeIndex = tabs.lastIndex
         return tab
+    }
+
+    private fun updateUrlFromState(tab: Tab, state: GeckoSession.SessionState) {
+        val index = state.currentIndex
+        if (index >= 0 && index < state.size()) {
+            tab.url = state[index].uri ?: tab.url
+            tab.label = state[index].title ?: tab.label
+        }
     }
 
     fun createAndOpen(privateMode: Boolean = false): Tab {
@@ -60,6 +79,7 @@ class BrowserTabManager(
         if (index !in tabs.indices) return null
         val wasActive = index == activeIndex
         val removed = tabs.removeAt(index)
+        sessionStates.remove(removed.id)
         removed.session.setActive(false)
         removed.session.setFocused(false)
         removed.session.close()
@@ -95,21 +115,21 @@ class BrowserTabManager(
     /** Flushes and persists normal sessions. Private sessions are intentionally skipped. */
     fun persist() {
         val store = stateStore ?: return
+        tabs.filterNot { it.privateMode }.forEach { it.session.flushSessionState() }
         val snapshots = tabs.filterNot { it.privateMode }.map { tab ->
-            tab.session.flushSessionState()
             TabStateStore.Tab(
                 id = tab.id.toString(),
                 url = tab.url,
                 title = tab.label,
                 privateMode = false,
                 active = tabs.indexOf(tab) == activeIndex,
-                sessionState = null
+                sessionState = sessionStates[tab.id]
             )
         }
         store.save(snapshots)
     }
 
-    /** Restores persisted normal tabs. Never restores private tabs because they are not stored. */
+    /** Restores persisted normal tabs. Private tabs are never restored because they are never stored. */
     fun restorePersistedTabs(): List<Tab> {
         val store = stateStore ?: return emptyList()
         val restored = store.restore()
@@ -117,14 +137,17 @@ class BrowserTabManager(
             val settings = GeckoSessionSettings.Builder()
                 .usePrivateMode(false)
                 .useTrackingProtection(true)
+                .suspendMediaWhenInactive(true)
                 .build()
-            val tab = Tab(
-                id = saved.id.toLongOrNull() ?: nextId++,
-                session = GeckoSession(settings),
-                privateMode = false,
-                label = saved.title.ifBlank { "Restored tab" },
-                url = saved.url
-            )
+            val id = saved.id.toLongOrNull() ?: nextId++
+            val tab = Tab(id, GeckoSession(settings), false, saved.title.ifBlank { "Restored tab" }, saved.url)
+            tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
+                override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
+                    sessionStates[tab.id] = sessionState.toString().orEmpty()
+                    updateUrlFromState(tab, sessionState)
+                    persist()
+                }
+            }
             tabs.add(tab)
             if (tab.id >= nextId) nextId = tab.id + 1
             tab.session.open(runtime)
@@ -146,6 +169,7 @@ class BrowserTabManager(
         persist()
         tabs.forEach { it.session.close() }
         tabs.clear()
+        sessionStates.clear()
         activeIndex = -1
     }
 }
