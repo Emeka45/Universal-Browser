@@ -2,12 +2,14 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import org.mozilla.geckoview.GeckoSession
-import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -23,11 +25,11 @@ object BrowserFeatureCenter {
             }
             Thread {
                 try {
-                    val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    if (!dir.exists()) dir.mkdirs()
                     val name = "Universal-${timestamp()}.pdf"
-                    val file = File(dir, name)
-                    input.use { source -> FileOutputStream(file).use { target -> source.copyTo(target) } }
+                    val uri = insertPublicFile(activity, name, "application/pdf", Environment.DIRECTORY_DOWNLOADS)
+                    if (uri == null) throw IllegalStateException("Android storage is unavailable")
+                    activity.contentResolver.openOutputStream(uri)?.use { output -> input.use { source -> source.copyTo(output) } }
+                        ?: throw IllegalStateException("Could not open output file")
                     activity.runOnUiThread { toast(activity, "PDF saved to Downloads/$name") }
                 } catch (error: Throwable) {
                     activity.runOnUiThread { toast(activity, "PDF save failed: ${error.message ?: "unknown error"}") }
@@ -56,11 +58,11 @@ object BrowserFeatureCenter {
                     }
                     Thread {
                         try {
-                            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                            val folder = File(dir, "Universal Browser")
-                            if (!folder.exists()) folder.mkdirs()
-                            val file = File(folder, "Universal-${timestamp()}.png")
-                            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                            val name = "Universal-${timestamp()}.png"
+                            val uri = insertPublicFile(activity, name, "image/png", Environment.DIRECTORY_PICTURES, "Universal Browser")
+                            if (uri == null) throw IllegalStateException("Android storage is unavailable")
+                            activity.contentResolver.openOutputStream(uri)?.use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
+                                ?: throw IllegalStateException("Could not open output file")
                             activity.runOnUiThread { toast(activity, "Screenshot saved to Pictures/Universal Browser") }
                         } catch (error: Throwable) {
                             activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") }
@@ -95,6 +97,26 @@ object BrowserFeatureCenter {
                 }
                 toast(activity, "Site setting updated")
             }.setNegativeButton("Close", null).show()
+    }
+
+    private fun insertPublicFile(activity: Activity, name: String, mime: String, relativePath: String, subFolder: String? = null): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        val relative = if (subFolder.isNullOrBlank()) relativePath else "$relativePath/$subFolder"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relative)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val collection = if (relativePath == Environment.DIRECTORY_PICTURES) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            else MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val uri = activity.contentResolver.insert(collection, values) ?: return null
+        try {
+            // The caller writes the bytes. Marking pending false happens in a small
+            // follow-up so Android makes the file visible in Files immediately.
+            activity.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        } catch (_: Throwable) { }
+        return uri
     }
 
     private fun timestamp(): String = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
