@@ -49,6 +49,20 @@ jobs:
       - name: Validate tab state integration
         run: python3 tools/tab_state_fix.py
 
+      - name: Apply extension-to-tab integration
+        run: python3 tools/extension_tab_upgrade.py
+
+      - name: Validate extension-to-tab integration
+        run: |
+          set -euo pipefail
+          grep -q 'private lateinit var extensionTabBridge: ExtensionTabBridge' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'extensionTabBridge.bindSession(target)' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'extensionTabBridge.notifyActive(session)' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'override fun onNewTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
+          grep -q 'override fun onUpdateTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
+          grep -q 'override fun onCloseTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
+          echo 'Extension-to-tab integration anchors validated.'
+
       - name: Apply advanced browser upgrade
         run: python3 tools/advanced_upgrade.py
 
