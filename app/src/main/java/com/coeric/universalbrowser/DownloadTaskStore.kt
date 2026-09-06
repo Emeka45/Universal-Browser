@@ -16,7 +16,8 @@ class DownloadTaskStore(context: Context) {
         val createdAt: Long,
         val referer: String = "",
         val localUri: String? = null,
-        val mimeType: String = "application/octet-stream"
+        val mimeType: String = "application/octet-stream",
+        val tempPath: String? = null
     )
 
     private val prefs = context.getSharedPreferences("universal_download_tasks", Context.MODE_PRIVATE)
@@ -27,9 +28,19 @@ class DownloadTaskStore(context: Context) {
         save(tasks)
     }
 
-    @Synchronized fun update(id: String, url: String? = null, title: String? = null, state: String? = null, bytes: Long? = null, total: Long? = null, referer: String? = null, localUri: String? = null, mimeType: String? = null) {
+    @Synchronized fun update(id: String, url: String? = null, title: String? = null, state: String? = null, bytes: Long? = null, total: Long? = null, referer: String? = null, localUri: String? = null, mimeType: String? = null, tempPath: String? = null) {
         val old = all().firstOrNull { it.id == id } ?: return
-        upsert(old.copy(url = url ?: old.url, title = title ?: old.title, state = state ?: old.state, bytes = bytes ?: old.bytes, total = total ?: old.total, referer = referer ?: old.referer, localUri = localUri ?: old.localUri, mimeType = mimeType ?: old.mimeType))
+        upsert(old.copy(
+            url = url ?: old.url,
+            title = title ?: old.title,
+            state = state ?: old.state,
+            bytes = bytes ?: old.bytes,
+            total = total ?: old.total,
+            referer = referer ?: old.referer,
+            localUri = localUri ?: old.localUri,
+            mimeType = mimeType ?: old.mimeType,
+            tempPath = tempPath ?: old.tempPath
+        ))
     }
 
     fun updateState(id: String, state: String) = update(id, state = state)
@@ -45,7 +56,9 @@ class DownloadTaskStore(context: Context) {
                     add(Task(
                         o.optString("id"), o.optString("url"), o.optString("title"), o.optString("state"),
                         o.optLong("bytes"), o.optLong("total"), o.optLong("createdAt"),
-                        o.optString("referer"), o.optString("localUri").takeIf { it.isNotBlank() }, o.optString("mimeType", "application/octet-stream")
+                        o.optString("referer"), o.optString("localUri").takeIf { it.isNotBlank() },
+                        o.optString("mimeType", "application/octet-stream"),
+                        o.optString("tempPath").takeIf { it.isNotBlank() }
                     ))
                 }
             }
@@ -60,6 +73,7 @@ class DownloadTaskStore(context: Context) {
                 put("id", t.id); put("url", t.url); put("title", t.title); put("state", t.state)
                 put("bytes", t.bytes); put("total", t.total); put("createdAt", t.createdAt)
                 put("referer", t.referer); t.localUri?.let { put("localUri", it) }; put("mimeType", t.mimeType)
+                t.tempPath?.let { put("tempPath", it) }
             }) }
         }.toString()).apply()
     }
