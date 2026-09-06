@@ -13,19 +13,20 @@ def replace_once(needle: str, replacement: str, label: str):
         raise SystemExit(f'Advanced upgrade anchor for {label} expected exactly once, found {count}')
     src = src.replace(needle, replacement, 1)
 
-# Private-window state. Each private window gets its own GeckoSession configured
-# with GeckoView's native private-mode setting; no browsing history is recorded
-# by our application data store while privateMode is active.
+# Private-window state. The tab manager creates the actual GeckoSession with
+# native private mode; MainActivity only carries the launch intent state.
 replace_once(
     '    private var lastMediaPromptAt = 0L\n',
     '    private var lastMediaPromptAt = 0L\n    private val privateMode by lazy { intent.getBooleanExtra("PRIVATE_MODE", false) }\n',
     'private window state'
 )
 
-# Make private mode a real Gecko session setting, not a UI-only label.
+# The real tab architecture owns GeckoSession construction. Ensure the first
+# session is created with the requested private-mode state instead of trying to
+# mutate an already-created session.
 replace_once(
-    '            .useTrackingProtection(browserPrefs.getBoolean("tracking_protection", true))\n',
-    '            .useTrackingProtection(browserPrefs.getBoolean("tracking_protection", true))\n            .usePrivateMode(privateMode)\n',
+    '        if (tabManager.count() == 0) tabManager.create(privateMode = false)\n',
+    '        if (tabManager.count() == 0) tabManager.create(privateMode = privateMode)\n',
     'native private session'
 )
 
@@ -114,7 +115,7 @@ if 'private fun openPrivateWindow()' not in src:
 
 required = [
     'private val privateMode',
-    '.usePrivateMode(privateMode)',
+    'tabManager.create(privateMode = privateMode)',
     'private fun openPrivateWindow()',
     'private fun translateCurrentPage()',
     'private fun addCurrentPageToHome()',
