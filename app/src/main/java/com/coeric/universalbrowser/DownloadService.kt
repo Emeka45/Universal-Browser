@@ -92,7 +92,7 @@ class DownloadService : Service() {
 
     private fun download(task: DownloadTaskStore.Task) {
         val store = DownloadTaskStore(this)
-        val temp = task.tempPath?.let(::File) ?: File(cacheDir, "downloads/${task.id}.part").also { it.parentFile?.mkdirs() }
+        val temp = task.tempPath?.takeIf { it.isNotBlank() }?.let(::File) ?: File(cacheDir, "downloads/${task.id}.part").also { it.parentFile?.mkdirs() }
         store.update(task.id, state = "downloading", tempPath = temp.absolutePath)
         try {
             var existing = if (temp.exists()) temp.length() else 0L
@@ -212,7 +212,7 @@ class DownloadService : Service() {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
     }
 
-    override fun onTimeout(startId: Int) {
+    override fun onTimeout(startId: Int, fgsType: Int) {
         stopRequested = true
         worker?.interrupt()
         stopSelf()
