@@ -39,18 +39,12 @@ class UniversalBrowserApp : Application() {
             .coerceIn(0.8f, 2.0f)
 
         val settings = GeckoRuntimeSettings.Builder()
-            // Required for addons.mozilla.org to communicate with the browser's
-            // WebExtension controller and offer in-page extension installation.
             .extensionsWebAPIEnabled(true)
-            // Preserve browser-quality pinch and double-tap zoom even on pages
-            // that attempt to disable user scaling.
             .forceUserScalableEnabled(true)
             .doubleTapZoomingEnabled(true)
             .automaticFontSizeAdjustment(false)
             .fontSizeFactor(textScale)
             .fontInflation(true)
-            // Keep Gecko's fingerprinting protection enabled by default.
-            .fingerprintingProtection(true)
             .build()
 
         return GeckoRuntime.create(this, settings).also { runtimeInstance = it }
