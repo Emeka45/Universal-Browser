@@ -78,21 +78,25 @@ jobs:
         with:
           gradle-version: '9.6.0'
 
-      - name: Build Redmi A1 ARMv7 APK
+      - name: Build Redmi A1 ARMv7 and ARM64 APKs
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Verify generated APK
+      - name: Verify generated APKs
         run: |
           set -e
-          apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
-          test "$apk_count" -eq 1
-          apk=$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)
-          echo "APK: $apk"
-          du -h "$apk"
+          mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk' | sort)
+          apk_count=${#apks[@]}
+          echo "Found $apk_count APK(s)"
+          test "$apk_count" -ge 1
+          printf '%s\n' "${apks[@]}"
+          for apk in "${apks[@]}"; do
+            echo "APK: $apk"
+            du -h "$apk"
+          done
 
-      - name: Upload Redmi A1 APK
+      - name: Upload Redmi A1 APKs
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-webstores-redmi-a1-armv7
+          name: universal-browser-webstores-redmi-a1-apks
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
