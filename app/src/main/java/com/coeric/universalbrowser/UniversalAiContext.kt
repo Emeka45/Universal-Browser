@@ -7,10 +7,9 @@ import org.mozilla.geckoview.PageExtractionController
 object UniversalAiContext {
     data class ContextData(val url: String, val text: String)
 
-    fun extract(session: GeckoSession, callback: (ContextData?) -> Unit) {
-        val url = session.currentUri?.toString().orEmpty()
+    fun extract(session: GeckoSession, url: String = "", callback: (ContextData?) -> Unit) {
         session.getSessionPageExtractor().getPageContent(
-            PageExtractionController.ContentParams(true, false)
+            PageExtractionController.ContentParams(true)
         ).accept(
             { content ->
                 val text = content?.toString()?.trim().orEmpty().take(30000)
