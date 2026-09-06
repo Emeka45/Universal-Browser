@@ -16,7 +16,7 @@ class QrScannerActivity : Activity() {
 
     private fun startScan() {
         IntentIntegrator(this)
-            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE_TYPES)
+            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
             .setPrompt("Point the camera at a QR code")
             .setOrientationLocked(false)
             .setBeepEnabled(false)
@@ -34,11 +34,10 @@ class QrScannerActivity : Activity() {
                 finish()
                 return
             }
-            val intent = Intent(this, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = android.net.Uri.parse(value)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            }
+            val intent = Intent(this, MainActivity::class.java)
+            intent.action = Intent.ACTION_VIEW
+            intent.data = android.net.Uri.parse(value)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             startActivity(intent)
             finish()
             return
