@@ -36,11 +36,7 @@ class BrowserTabManager(
         val tab = Tab(nextId++, GeckoSession(settings), privateMode)
         tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
-                if (!tab.privateMode) {
-                    sessionState.toString()?.let { sessionStates[tab.id] = it }
-                    updateUrlFromState(tab, sessionState)
-                    persist()
-                }
+                updateSessionState(session, sessionState)
             }
         }
         tabs.add(tab)
@@ -54,6 +50,14 @@ class BrowserTabManager(
             tab.url = state[index].uri ?: tab.url
             tab.label = state[index].title ?: tab.label
         }
+    }
+
+    /** Called by the UI delegate when it owns the session progress delegate. */
+    fun updateSessionState(session: GeckoSession, state: GeckoSession.SessionState) {
+        val tab = tabs.firstOrNull { it.session === session } ?: return
+        if (tab.privateMode) return
+        sessionStates[tab.id] = state.toString().orEmpty()
+        updateUrlFromState(tab, state)
     }
 
     fun createAndOpen(privateMode: Boolean = false): Tab {
@@ -102,12 +106,10 @@ class BrowserTabManager(
 
     fun updateLabel(session: GeckoSession, label: String) {
         tabs.firstOrNull { it.session === session }?.label = label.ifBlank { "New tab" }
-        persist()
     }
 
     fun updateUrl(session: GeckoSession, url: String) {
         tabs.firstOrNull { it.session === session }?.url = url
-        persist()
     }
 
     fun indexOf(session: GeckoSession): Int = tabs.indexOfFirst { it.session === session }
@@ -143,9 +145,7 @@ class BrowserTabManager(
             val tab = Tab(id, GeckoSession(settings), false, saved.title.ifBlank { "Restored tab" }, saved.url)
             tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
                 override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
-                    sessionStates[tab.id] = sessionState.toString().orEmpty()
-                    updateUrlFromState(tab, sessionState)
-                    persist()
+                    updateSessionState(session, sessionState)
                 }
             }
             tabs.add(tab)
