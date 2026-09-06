@@ -39,12 +39,14 @@ jobs:
           set -euo pipefail
           test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
           test -f app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserAdvancedTools.kt
           test -f app/src/main/java/com/coeric/universalbrowser/DownloadTaskStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           test -f ai-gateway/src/index.js
           grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'AdvancedMediaDownloadEngine.enqueue' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'BrowserAdvancedTools' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
           grep -q '/v1/chat' ai-gateway/src/index.js
           if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
           echo 'Universal Browser source validation passed.'
@@ -55,17 +57,26 @@ jobs:
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Verify generated APK
+      - name: Verify generated universal APK
         shell: bash
         run: |
           set -euo pipefail
-          apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
-          test "$apk_count" -ge 1
-          find app/build/outputs/apk/debug -type f -name '*.apk' -print -exec file {} \; -exec du -h {} \;
+          mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk' | sort)
+          apk_count=${#apks[@]}
+          echo "Found $apk_count debug APK(s)"
+          test "$apk_count" -eq 1
+          apk="${apks[0]}"
+          case "$apk" in
+            *universal*|*debug*) : ;;
+            *) echo "Unexpected APK name: $apk"; exit 1 ;;
+          esac
+          file "$apk"
+          du -h "$apk"
+          echo "Universal APK verified: $apk"
 
-      - name: Upload debug APK
+      - name: Upload universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-debug
+          name: universal-browser-universal-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
