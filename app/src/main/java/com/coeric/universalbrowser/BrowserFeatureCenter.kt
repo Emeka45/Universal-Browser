@@ -34,7 +34,9 @@ object BrowserFeatureCenter {
                     activity.runOnUiThread { toast(activity, "PDF save failed: ${error.message ?: "unknown error"}") }
                 }
             }.start()
-        }, { error -> activity.runOnUiThread { toast(activity, "PDF save failed: ${error.message ?: "unknown error"}") } })
+        }, { error ->
+            activity.runOnUiThread { toast(activity, "PDF save failed: ${error?.message ?: "unknown error"}") }
+        })
     }
 
     fun printPage(activity: Activity, session: GeckoSession) {
@@ -72,7 +74,7 @@ object BrowserFeatureCenter {
                 }
             }, { error ->
                 try { session.releaseDisplay(display) } catch (_: Throwable) { }
-                activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") }
+                activity.runOnUiThread { toast(activity, "Screenshot failed: ${error?.message ?: "unknown error"}") }
             })
         } catch (error: Throwable) {
             toast(activity, "Screenshot unavailable: ${error.message ?: "page is not ready"}")
