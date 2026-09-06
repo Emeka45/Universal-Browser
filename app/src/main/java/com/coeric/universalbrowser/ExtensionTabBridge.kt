@@ -1,5 +1,6 @@
 package com.coeric.universalbrowser
 
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.WebExtension
@@ -41,7 +42,7 @@ class ExtensionTabBridge(
                 onSessionReady(created)
                 val requestedUrl = createDetails.url?.trim().orEmpty()
                 if (requestedUrl.isNotBlank()) created.loadUri(requestedUrl)
-                if (createDetails.active == true) {
+                if (createDetails.active ?: false) {
                     tabs.activate(tabs.indexOf(created))
                     notifyActive(created)
                     onSessionActivated(created)
@@ -71,25 +72,25 @@ class ExtensionTabBridge(
                     extension: WebExtension,
                     session: GeckoSession,
                     details: WebExtension.UpdateTabDetails
-                ): GeckoResult<org.mozilla.geckoview.AllowOrDeny> {
+                ): GeckoResult<AllowOrDeny> {
                     details.url?.trim()?.takeIf { it.isNotBlank() }?.let { session.loadUri(it) }
-                    if (details.active == true) {
+                    if (details.active ?: false) {
                         tabs.activate(tabs.indexOf(session))
                         notifyActive(session)
                         onSessionActivated(session)
                     }
-                    return GeckoResult.allow()
+                    return GeckoResult.fromValue(AllowOrDeny.ALLOW)
                 }
 
                 override fun onCloseTab(
                     source: WebExtension?,
                     session: GeckoSession
-                ): GeckoResult<org.mozilla.geckoview.AllowOrDeny> {
+                ): GeckoResult<AllowOrDeny> {
                     val index = tabs.indexOf(session)
-                    if (index < 0) return GeckoResult.deny()
+                    if (index < 0) return GeckoResult.fromValue(AllowOrDeny.DENY)
                     tabs.close(index)
                     onSessionClosed(session)
-                    return GeckoResult.allow()
+                    return GeckoResult.fromValue(AllowOrDeny.ALLOW)
                 }
             }
         )
