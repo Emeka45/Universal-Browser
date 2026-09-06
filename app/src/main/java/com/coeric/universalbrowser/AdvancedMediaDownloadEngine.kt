@@ -34,15 +34,18 @@ object AdvancedMediaDownloadEngine {
 
     fun enqueue(context: Context, url: String, title: String, referer: String, onStarted: (String) -> Unit, onFinished: (Result) -> Unit, onError: (String) -> Unit) {
         if (!isSupported(url)) { onError("Unsupported media URL"); return }
+        val store = DownloadTaskStore(context)
+        val taskId = "media-${System.currentTimeMillis()}"
+        store.upsert(DownloadTaskStore.Task(taskId, url, title.ifBlank { "Universal media" }, "queued", 0L, -1L, System.currentTimeMillis(), referer))
         Thread {
             try {
                 val path = url.substringBefore('?').lowercase(Locale.US)
                 when {
-                    path.endsWith(".m3u8") -> { onStarted("HLS stream"); onFinished(downloadHls(context, url, title, referer)) }
-                    path.endsWith(".mpd") -> { onStarted("DASH stream"); onFinished(downloadDash(context, url, title, referer)) }
-                    else -> { onStarted("Direct media"); enqueueDirect(context, url, title, referer) }
+                    path.endsWith(".m3u8") -> { store.updateState(taskId, "downloading"); onStarted("HLS stream"); val result = downloadHls(context, url, title, referer); store.update(taskId, state = "completed", bytes = result.bytes, total = result.bytes); onFinished(result) }
+                    path.endsWith(".mpd") -> { store.updateState(taskId, "downloading"); onStarted("DASH stream"); val result = downloadDash(context, url, title, referer); store.update(taskId, state = "completed", bytes = result.bytes, total = result.bytes); onFinished(result) }
+                    else -> { onStarted("Direct media"); enqueueDirect(context, url, title, referer); store.updateState(taskId, "queued") }
                 }
-            } catch (t: Throwable) { onError(t.message ?: "Media download failed") }
+            } catch (t: Throwable) { store.updateState(taskId, "failed"); onError(t.message ?: "Media download failed") }
         }.start()
     }
 
