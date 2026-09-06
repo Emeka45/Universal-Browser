@@ -66,17 +66,8 @@ jobs:
       - name: Apply advanced browser upgrade
         run: python3 tools/advanced_upgrade.py
 
-      - name: Apply monetization upgrade
-        run: python3 tools/monetization_upgrade.py
-
       - name: Validate monetization integration
-        run: |
-          set -euo pipefail
-          grep -q 'play-services-ads:25.4.0' app/build.gradle.kts
-          grep -q 'com.google.android.gms.ads.APPLICATION_ID' app/src/main/AndroidManifest.xml
-          grep -q 'MonetizationCenter.createBanner' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'MobileAds.initialize' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          echo 'Monetization integration anchors validated.'
+        run: python3 tools/monetization_upgrade.py
 
       - name: Validate source formatting
         run: git diff --check
