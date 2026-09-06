@@ -2,17 +2,14 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -27,10 +24,7 @@ import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebExtensionController
 
-/**
- * Main browser surface. BrowserTabManager owns every GeckoSession; MainActivity
- * only attaches the selected session to the single GeckoView surface.
- */
+/** Main browser surface; BrowserTabManager owns all Gecko sessions. */
 class MainActivity : Activity() {
     private lateinit var browserView: GeckoView
     private lateinit var homePanel: View
@@ -39,12 +33,12 @@ class MainActivity : Activity() {
     private lateinit var backButton: TextView
     private lateinit var forwardButton: TextView
     private lateinit var tabButton: TextView
+    private lateinit var tabManager: BrowserTabManager
 
     private val browserData by lazy { BrowserDataStore(this) }
-    private lateinit var tabManager: BrowserTabManager
     private var currentUrl = ""
-    private var desktopMode = false
-    private var restored = false
+    private var canGoBack = false
+    private var canGoForward = false
     private var lastMediaUrl = ""
     private var lastMediaPromptAt = 0L
 
@@ -61,14 +55,12 @@ class MainActivity : Activity() {
         window.statusBarColor = white
         window.navigationBarColor = white
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-
         tabManager = BrowserTabManager(getRuntime(), TabStateStore(this))
+
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(white) }
         root.addView(buildToolbar())
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(purple)
-            visibility = View.GONE
+            max = 100; progressTintList = android.content.res.ColorStateList.valueOf(purple); visibility = View.GONE
         }
         root.addView(progress, LinearLayout.LayoutParams(-1, 3.dp()))
         browserView = GeckoView(this)
@@ -77,108 +69,103 @@ class MainActivity : Activity() {
         root.addView(browserView, LinearLayout.LayoutParams(-1, 0, 1f))
         browserView.visibility = View.GONE
         setContentView(root)
+        restoreTabs()
 
-        restoreTabsOrCreateInitial()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, systemBackCallback
+            )
+        }
     }
 
-    private fun restoreTabsOrCreateInitial() {
-        if (restored) return
-        restored = true
-        val restoredTabs = tabManager.restorePersistedTabs()
-        if (restoredTabs.isEmpty()) {
-            val tab = tabManager.createAndOpen(false)
-            attachTab(tab)
-            showHome()
-        } else {
-            attachTab(tabManager.active() ?: restoredTabs.first())
-            showHome()
+    private val systemBackCallback = android.window.OnBackInvokedCallback {
+        when {
+            canGoBack -> activeSession()?.goBack()
+            homePanel.visibility == View.VISIBLE -> finish()
+            else -> showHome()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        when {
+            canGoBack -> activeSession()?.goBack()
+            homePanel.visibility == View.VISIBLE -> super.onBackPressed()
+            else -> showHome()
+        }
+    }
+
+    private fun restoreTabs() {
+        val restored = tabManager.restorePersistedTabs()
+        val tab = tabManager.active() ?: restored.firstOrNull() ?: tabManager.createAndOpen(false)
+        attachTab(tab)
+        if (restored.isEmpty()) showHome() else if (tab.url.isBlank()) showHome() else showPage()
+        updateTabButton()
     }
 
     private fun buildToolbar(): View {
-        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8.dp(), 8.dp(), 8.dp(), 7.dp()); setBackgroundColor(white) }
+        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8.dp(), 8.dp(), 8.dp(), 7.dp()) }
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        backButton = toolbarButton("‹", 28f) { activeSession()?.let { if (it.canGoBack) it.goBack() } }
-        forwardButton = toolbarButton("›", 28f) { activeSession()?.let { if (it.canGoForward) it.goForward() } }
+        backButton = toolbarButton("‹", 28f) { if (canGoBack) activeSession()?.goBack() }
+        forwardButton = toolbarButton("›", 28f) { if (canGoForward) activeSession()?.goForward() }
         row.addView(backButton); row.addView(forwardButton)
-        row.addView(TextView(this).apply {
-            text = "U"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white)
-            background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat()
-        }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
-        addressBar = EditText(this).apply {
-            hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink)
-            setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp())
-            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
-        }
+        row.addView(TextView(this).apply { text = "U"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()) }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
+        addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
-        tabButton = toolbarButton("1", 14f) { showTabs() }
-        row.addView(tabButton)
+        tabButton = toolbarButton("1", 14f) { showTabs() }; row.addView(tabButton)
         row.addView(toolbarButton("↻", 21f) { activeSession()?.reload() ?: showHome() })
         row.addView(toolbarButton("⚡", 21f) { BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }) })
         row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
-        outer.addView(row)
-        return outer
+        outer.addView(row); return outer
     }
 
     private fun buildHomePanel(): View {
         val scroll = ScrollView(this).apply { setBackgroundColor(surface) }
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18.dp(), 18.dp(), 18.dp(), 34.dp()) }
-        val hero = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(22.dp(), 28.dp(), 22.dp(), 28.dp()); background = gradient(intArrayOf(darkPurple, purple, violet), 28.dp()); elevation = 5.dp().toFloat() }
-        hero.addView(TextView(this).apply { text = "U"; textSize = 58f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple), 31.dp()); elevation = 7.dp().toFloat() }, LinearLayout.LayoutParams(104.dp(), 104.dp()).apply { bottomMargin = 17.dp() })
+        val hero = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(22.dp(), 28.dp(), 22.dp(), 28.dp()); background = gradient(intArrayOf(darkPurple, purple, violet), 28.dp()) }
+        hero.addView(TextView(this).apply { text = "U"; textSize = 58f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple), 31.dp()) }, LinearLayout.LayoutParams(104.dp(), 104.dp()).apply { bottomMargin = 17.dp() })
         hero.addView(TextView(this).apply { text = "UNIVERSAL"; textSize = 29f; letterSpacing = .08f; typeface = Typeface.DEFAULT_BOLD; setTextColor(white); gravity = Gravity.CENTER })
         hero.addView(TextView(this).apply { text = "Your web. Your way."; textSize = 15f; setTextColor(Color.rgb(235, 231, 255)); gravity = Gravity.CENTER; setPadding(0, 4.dp(), 0, 20.dp()) })
-        hero.addView(EditText(this).apply { hint = "Search the web or enter a URL"; textSize = 15f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(125, 123, 140)); setPadding(18.dp(), 0, 18.dp(), 0); background = rounded(white, 19.dp()); elevation = 5.dp().toFloat(); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }, LinearLayout.LayoutParams(-1, 54.dp()))
+        hero.addView(EditText(this).apply { hint = "Search the web or enter a URL"; textSize = 15f; isSingleLine = true; setTextColor(ink); setPadding(18.dp(), 0, 18.dp(), 0); background = rounded(white, 19.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }, LinearLayout.LayoutParams(-1, 54.dp()))
         content.addView(hero)
-        content.addView(sectionTitle("Your browser", "Real tabs, private tabs and persistent sessions"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
-        content.addView(featureCard("New tab", "Open another Gecko session", "+") { newTab(false) })
-        content.addView(featureCard("Private tab", "Isolated private browsing; never restored or persisted", "◈") { newTab(true) }, featureParams())
-        content.addView(featureCard("Tabs", "Switch, close and restore your open pages", "▣") { showTabs() }, featureParams())
-        content.addView(featureCard("Downloads", "Progress, paused state, retry, cancel and completed files", "↓") { DownloadCenter.show(this) }, featureParams())
-        content.addView(featureCard("Web Stores", "Firefox, Chrome, Edge and Opera extension catalogs", "◎") { showWebStores() }, featureParams())
+        content.addView(sectionTitle("Your browser", "Real Gecko sessions, private tabs and persistent tabs"), featureParams().apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
+        content.addView(featureCard("New tab", "Open another independent browser session", "+") { newTab(false) })
+        content.addView(featureCard("Private tab", "Isolated private browsing; never persisted", "◈") { newTab(true) }, featureParams())
+        content.addView(featureCard("Tabs", "Switch, close and restore tabs", "▣") { showTabs() }, featureParams())
+        content.addView(featureCard("Downloads", "Progress, pause state, retry, cancel and files", "↓") { DownloadCenter.show(this) }, featureParams())
+        content.addView(featureCard("Web Stores", "Firefox, Chrome, Edge and Opera catalogs", "◎") { showWebStores() }, featureParams())
         content.addView(featureCard("Power tools", "Desktop site, zoom, reader, translation, PDF, screenshot and privacy", "⚙") { BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }) }, featureParams())
-        content.addView(featureCard("Universal AI", "Ask about the current page through the secure AI gateway", "AI") { showAiAssistant() }, featureParams())
-        scroll.addView(content)
-        return scroll
+        content.addView(featureCard("Universal AI", "Ask about the current page through the secure gateway", "AI") { showAiAssistant() }, featureParams())
+        scroll.addView(content); return scroll
     }
-
-    private fun ensureTabOpen(): BrowserTabManager.Tab {
-        return tabManager.active() ?: tabManager.createAndOpen(false).also { attachTab(it) }
-    }
-
-    private fun activeSession(): GeckoSession? = tabManager.active()?.session
 
     private fun attachTab(tab: BrowserTabManager.Tab) {
+        val old = browserView.getSession()
+        if (old != null && old !== tab.session) browserView.releaseSession()
+        if (!tab.session.isOpen) tab.session.open(getRuntime())
         browserView.setSession(tab.session)
         BrowserPowerCenter.applyPreferences(this, tab.session)
         currentUrl = tab.url
         addressBar.setText(tab.url)
-        desktopMode = getSharedPreferences("universal_browser_power", 0).getBoolean("desktop_mode", false)
         tab.session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCrash(session: GeckoSession) { recoverActiveTab("The page process stopped and was restarted.") }
             override fun onKill(session: GeckoSession) { recoverActiveTab("Android stopped the page process; the tab was recovered.") }
         }
         tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onProgressChange(session: GeckoSession, value: Int) {
-                if (session === activeSession()) {
-                    progress.progress = value
-                    progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE
-                }
+                if (session === activeSession()) { progress.progress = value; progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE }
             }
-            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) {
-                if (session === activeSession()) updateChromeState()
-            }
+            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) { tabManager.persist(); updateChromeState() }
         }
         tab.session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
                 if (session !== activeSession()) return
-                currentUrl = url ?: currentUrl
-                tab.url = currentUrl
+                currentUrl = url ?: currentUrl; tab.url = currentUrl
                 if (currentUrl.isNotBlank()) browserData.recordVisit(currentUrl, tab.label.ifBlank { currentUrl })
-                addressBar.setText(currentUrl)
-                updateChromeState()
+                addressBar.setText(currentUrl); updateChromeState()
             }
-            override fun onCanGoBack(session: GeckoSession, value: Boolean) { if (session === activeSession()) updateChromeState() }
-            override fun onCanGoForward(session: GeckoSession, value: Boolean) { if (session === activeSession()) updateChromeState() }
+            override fun onCanGoBack(session: GeckoSession, value: Boolean) { if (session === activeSession()) { canGoBack = value; updateChromeState() } }
+            override fun onCanGoForward(session: GeckoSession, value: Boolean) { if (session === activeSession()) { canGoForward = value; updateChromeState() } }
         }
         getRuntime().webExtensionController.promptDelegate = extensionPromptDelegate
         installMediaDetector(tab.session)
@@ -194,8 +181,7 @@ class MainActivity : Activity() {
 
     private val mediaMessageDelegate = object : WebExtension.MessageDelegate {
         override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-            val active = activeSession()
-            if (nativeApp != NATIVE_APP_NAME || sender.session !== active || message !is JSONObject) return null
+            if (nativeApp != NATIVE_APP_NAME || sender.session !== activeSession() || message !is JSONObject) return null
             if (message.optString("type") != "media-playable") return null
             val url = message.optString("url").trim()
             if (!AdvancedMediaDownloadEngine.isSupported(url)) return null
@@ -208,56 +194,33 @@ class MainActivity : Activity() {
         val now = System.currentTimeMillis()
         if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
         lastMediaUrl = url; lastMediaPromptAt = now
-        AlertDialog.Builder(this).setTitle("Media ready to download")
-            .setMessage(title.replace(Regex("\\s+"), " ").trim().take(100))
-            .setNegativeButton("Not now", null)
-            .setPositiveButton("Download") { _, _ ->
-                AdvancedMediaDownloadEngine.enqueue(this, url, title, currentUrl,
-                    onStarted = { runOnUiThread { toast("Media download started") } },
-                    onFinished = { result -> runOnUiThread { toast("${result.kind} saved: ${result.fileName}") } },
-                    onError = { error -> runOnUiThread { toast("Media download failed: $error") } })
-            }.show()
+        AlertDialog.Builder(this).setTitle("Media ready to download").setMessage(title.take(100)).setNegativeButton("Not now", null).setPositiveButton("Download") { _, _ ->
+            AdvancedMediaDownloadEngine.enqueue(this, url, title, currentUrl, { toast("Media download started") }, { result -> toast("${result.kind} saved: ${result.fileName}") }, { error -> toast("Media download failed: $error") })
+        }.show()
     }
 
     private fun navigate(raw: String) {
-        val input = raw.trim()
-        if (input.isEmpty()) return
-        val tab = ensureTabOpen()
-        val uri = when {
-            input.startsWith("http://", true) || input.startsWith("https://", true) -> input
-            input.contains(".") && !input.contains(" ") -> "https://$input"
-            else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"
-        }
-        currentUrl = uri; tab.url = uri; tabManager.activate(tabManager.indexOf(tab.session))
-        homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE
-        tab.session.setActive(true); tab.session.setFocused(true); tab.session.loadUri(uri)
-        addressBar.setText(uri); updateChromeState()
+        val input = raw.trim(); if (input.isEmpty()) return
+        val tab = tabManager.active() ?: tabManager.createAndOpen(false).also { attachTab(it) }
+        val uri = when { input.startsWith("http://", true) || input.startsWith("https://", true) -> input; input.contains(".") && !input.contains(" ") -> "https://$input"; else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}" }
+        currentUrl = uri; tab.url = uri; tab.session.setActive(true); tab.session.setFocused(true); tab.session.loadUri(uri); addressBar.setText(uri); showPage()
     }
 
     private fun newTab(privateMode: Boolean) {
-        val tab = tabManager.createAndOpen(privateMode)
-        attachTab(tab)
-        showHome()
-        updateTabButton()
-        toast(if (privateMode) "Private tab opened" else "New tab opened")
+        val tab = tabManager.createAndOpen(privateMode); attachTab(tab); showHome(); updateTabButton(); toast(if (privateMode) "Private tab opened" else "New tab opened")
     }
 
     private fun switchTab(index: Int) {
         val tab = tabManager.activate(index) ?: return
-        attachTab(tab)
-        if (tab.url.isBlank()) showHome() else { homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE }
+        canGoBack = false; canGoForward = false; attachTab(tab)
+        if (tab.url.isBlank()) showHome() else showPage()
         updateTabButton()
     }
 
     private fun closeTab(index: Int) {
         val next = tabManager.close(index)
-        if (next == null) {
-            val created = tabManager.createAndOpen(false)
-            attachTab(created); showHome()
-        } else {
-            attachTab(next)
-            if (next.url.isBlank()) showHome() else { homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE }
-        }
+        canGoBack = false; canGoForward = false
+        if (next == null) { val created = tabManager.createAndOpen(false); attachTab(created); showHome() } else { attachTab(next); if (next.url.isBlank()) showHome() else showPage() }
         updateTabButton()
     }
 
@@ -268,70 +231,34 @@ class MainActivity : Activity() {
             val active = if (index == tabManager.activeIndex()) " ✓" else ""
             "$marker${tab.label.ifBlank { tab.url.ifBlank { "New tab" } }}$active\n${tab.url.ifBlank { "New tab" }}"
         }.toTypedArray()
-        val dialog = AlertDialog.Builder(this).setTitle("Tabs (${tabs.size})").setItems(labels) { _, which -> switchTab(which) }
-            .setNegativeButton("Close", null)
-        dialog.setNeutralButton("+ New tab") { _, _ -> newTab(false) }
-        dialog.setPositiveButton("Private tab") { _, _ -> newTab(true) }
-        dialog.show()
-        if (tabs.isNotEmpty()) {
-            val list = dialog.create().listView
-            list?.setOnItemLongClickListener { _, _, position, _ ->
-                closeTab(position); true
-            }
-        }
+        AlertDialog.Builder(this).setTitle("Tabs (${tabs.size})").setItems(labels) { _, which -> switchTab(which) }
+            .setNeutralButton("+ New tab") { _, _ -> newTab(false) }
+            .setPositiveButton("Private tab") { _, _ -> newTab(true) }
+            .setNegativeButton("Close", null).show()
     }
 
-    private fun showHome() {
-        homePanel.visibility = View.VISIBLE; browserView.visibility = View.GONE
-        addressBar.setText("")
-        activeSession()?.setActive(true)
-        updateTabButton()
-    }
-
-    private fun updateChromeState() {
-        val session = activeSession()
-        val canBack = session?.canGoBack == true
-        val canForward = session?.canGoForward == true
-        backButton.alpha = if (canBack) 1f else .35f
-        forwardButton.alpha = if (canForward) 1f else .35f
-        updateTabButton()
-    }
-
+    private fun showHome() { homePanel.visibility = View.VISIBLE; browserView.visibility = View.GONE; addressBar.setText(""); updateTabButton() }
+    private fun showPage() { homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE; updateChromeState() }
+    private fun activeSession(): GeckoSession? = tabManager.active()?.session
+    private fun updateChromeState() { backButton.alpha = if (canGoBack) 1f else .35f; forwardButton.alpha = if (canGoForward) 1f else .35f; updateTabButton() }
     private fun updateTabButton() { if (::tabButton.isInitialized) tabButton.text = tabManager.count().toString() }
 
     private fun recoverActiveTab(message: String) {
-        runOnUiThread {
-            val tab = tabManager.active() ?: return@runOnUiThread
-            val target = tab.url
-            try {
-                if (!tab.session.isOpen) tab.session.open(getRuntime())
-                if (target.isNotBlank()) tab.session.loadUri(target)
-                toast(message)
-            } catch (_: Throwable) { showHome() }
-        }
+        runOnUiThread { val tab = tabManager.active() ?: return@runOnUiThread; try { if (!tab.session.isOpen) tab.session.open(getRuntime()); if (tab.url.isNotBlank()) tab.session.loadUri(tab.url); toast(message) } catch (_: Throwable) { showHome() } }
     }
 
     private fun showBrowserMenu() {
         val items = arrayOf("Home", "New tab", "New private tab", "Tabs", "Downloads", "Extensions", "Web Stores", "Power tools", "Universal AI", "About Universal")
-        AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which ->
-            when (which) {
-                0 -> showHome(); 1 -> newTab(false); 2 -> newTab(true); 3 -> showTabs(); 4 -> DownloadCenter.show(this)
-                5 -> showExtensions(); 6 -> showWebStores(); 7 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() })
-                8 -> showAiAssistant(); 9 -> showAbout()
-            }
-        }.show()
+        AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which -> when (which) {
+            0 -> showHome(); 1 -> newTab(false); 2 -> newTab(true); 3 -> showTabs(); 4 -> DownloadCenter.show(this); 5 -> showExtensions(); 6 -> showWebStores(); 7 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }); 8 -> showAiAssistant(); 9 -> showAbout()
+        } }.show()
     }
 
     private fun showExtensions() {
-        getRuntime().webExtensionController.list().accept(
-            { extensions -> runOnUiThread {
-                val names = (extensions ?: emptyList()).map { e -> "${e.metaData.name ?: e.id}  •  ${if (e.metaData.enabled) "Enabled" else "Disabled"}" }.toTypedArray()
-                AlertDialog.Builder(this).setTitle("Extensions")
-                    .setMessage(if (names.isEmpty()) "No extensions installed.\n\nUse Check Chrome extension to inspect a local package." else names.joinToString("\n"))
-                    .setPositiveButton("Web stores", { _, _ -> showWebStores() }).setNegativeButton("Done", null).show()
-            } },
-            { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } }
-        )
+        getRuntime().webExtensionController.list().accept({ extensions -> runOnUiThread {
+            val names = (extensions ?: emptyList()).map { e -> "${e.metaData.name ?: e.id} • ${if (e.metaData.enabled) "Enabled" else "Disabled"}" }
+            AlertDialog.Builder(this).setTitle("Extensions").setMessage(if (names.isEmpty()) "No extensions installed. Browse an extension web store to continue." else names.joinToString("\n")).setPositiveButton("Web stores") { _, _ -> showWebStores() }.setNegativeButton("Done", null).show()
+        } }, { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } })
     }
 
     private fun showWebStores() {
@@ -340,57 +267,24 @@ class MainActivity : Activity() {
         AlertDialog.Builder(this).setTitle("Extension web stores").setItems(stores) { _, which -> navigate(urls[which]) }.setNegativeButton("Close", null).show()
     }
 
-    private fun showAiAssistant() {
-        if (currentUrl.isBlank()) { toast("Open a webpage first"); return }
-        AiAssistantView.show(this, currentUrl)
-    }
-
-    private fun showAbout() {
-        AlertDialog.Builder(this).setTitle("Universal Browser")
-            .setMessage("GeckoView browser with real multi-session tabs, private browsing isolation, WebExtensions, media downloads and native AI foundation.\n\nNormal tabs persist session state across restarts. Private tabs are never persisted.")
-            .setPositiveButton("Done", null).show()
-    }
+    private fun showAiAssistant() { if (currentUrl.isBlank()) toast("Open a webpage first") else AiAssistantView.show(this, currentUrl) }
+    private fun showAbout() { AlertDialog.Builder(this).setTitle("Universal Browser").setMessage("GeckoView browser with real multi-session tabs, private browsing isolation, persistent normal sessions, WebExtensions, media downloads and native AI foundation.\n\nPrivate tabs are never persisted.").setPositiveButton("Done", null).show() }
 
     private val extensionPromptDelegate = object : WebExtensionController.PromptDelegate {
         override fun onInstallPromptRequest(extension: WebExtension, permissions: Array<String>, origins: Array<String>, dataCollectionPermissions: Array<String>): GeckoResult<WebExtension.PermissionPromptResponse> {
-            val result = GeckoResult<WebExtension.PermissionPromptResponse>()
-            val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
+            val result = GeckoResult<WebExtension.PermissionPromptResponse>(); val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
             val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList()).distinct().joinToString("\n").ifBlank { "No additional permissions listed." }
-            runOnUiThread {
-                AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("This extension requests:\n\n$requested")
-                    .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
-                    .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }
-                    .setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.show()
-            }
+            runOnUiThread { AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("This extension requests:\n\n$requested").setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }.setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.show() }
             return result
         }
     }
 
-    override fun onPause() {
-        tabManager.persist()
-        super.onPause()
-    }
-
-    override fun onDestroy() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) onBackInvokedDispatcher.unregisterOnBackInvokedCallback(systemBackCallback)
-        tabManager.persist()
-        super.onDestroy()
-    }
-
-    private val systemBackCallback = android.window.OnBackInvokedCallback {
-        val session = activeSession()
-        if (session?.canGoBack == true) session.goBack() else if (homePanel.visibility == View.VISIBLE) finish() else showHome()
-    }
-
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        val session = activeSession()
-        if (session?.canGoBack == true) session.goBack() else if (homePanel.visibility == View.VISIBLE) super.onBackPressed() else showHome()
-    }
+    override fun onPause() { tabManager.persist(); super.onPause() }
+    override fun onDestroy() { tabManager.persist(); if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) onBackInvokedDispatcher.unregisterOnBackInvokedCallback(systemBackCallback); super.onDestroy() }
 
     private fun toolbarButton(label: String, size: Float, action: () -> Unit) = TextView(this).apply { text = label; textSize = size; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); setOnClickListener { action() }; background = rounded(Color.TRANSPARENT, 12.dp()); layoutParams = LinearLayout.LayoutParams(40.dp(), 42.dp()) }
-    private fun sectionTitle(title: String, subtitle: String): View = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@MainActivity).apply { text = title; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 12f; setTextColor(muted); setPadding(0, 2.dp(), 0, 0) }) }
-    private fun featureCard(title: String, subtitle: String, mark: String, action: () -> Unit): View = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(14.dp(), 13.dp(), 12.dp(), 13.dp()); background = rounded(white, 19.dp()); elevation = 2.dp().toFloat(); setOnClickListener { action() }; addView(TextView(this@MainActivity).apply { text = mark; textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 15.dp()) }, LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { rightMargin = 13.dp() }); addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f); addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 11.5f; setTextColor(muted); setPadding(0, 3.dp(), 0, 0) }) }); addView(TextView(this@MainActivity).apply { text = "›"; textSize = 25f; setTextColor(Color.rgb(150, 147, 166)) }) }
+    private fun sectionTitle(title: String, subtitle: String): View = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@MainActivity).apply { text = title; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 12f; setTextColor(muted) }) }
+    private fun featureCard(title: String, subtitle: String, mark: String, action: () -> Unit): View = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(14.dp(), 13.dp(), 12.dp(), 13.dp()); background = rounded(white, 19.dp()); elevation = 2.dp().toFloat(); setOnClickListener { action() }; addView(TextView(this@MainActivity).apply { text = mark; textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 15.dp()) }, LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { rightMargin = 13.dp() }); addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f); addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 11.5f; setTextColor(muted) }) }); addView(TextView(this@MainActivity).apply { text = "›"; textSize = 25f; setTextColor(muted) }) }
     private fun featureParams() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() }
     private fun getRuntime(): GeckoRuntime = (application as UniversalBrowserApp).getRuntime()
     private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
@@ -398,8 +292,5 @@ class MainActivity : Activity() {
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
-    companion object {
-        private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"
-        private const val NATIVE_APP_NAME = "browser"
-    }
+    companion object { private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"; private const val NATIVE_APP_NAME = "browser" }
 }
