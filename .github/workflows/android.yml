@@ -43,6 +43,9 @@ jobs:
       - name: Apply product browser upgrade
         run: python3 tools/product_upgrade.py
 
+      - name: Apply advanced browser upgrade
+        run: python3 tools/advanced_upgrade.py
+
       - name: Validate source formatting
         run: git diff --check
 
