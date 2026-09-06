@@ -24,8 +24,8 @@ object BrowserPowerCenter {
         }
         val items = arrayOf(
             "Desktop site", "Page zoom", "Reader mode", "Translate page", "Find in page", "Share page",
-            "Save offline snapshot", "Save page as PDF", "Screenshot page", "Print page", "Bookmark page",
-            "QR code", "Site controls", "Privacy & protection", "Web stores", "Downloads", "Settings"
+            "Save offline page", "Save page as PDF", "Screenshot page", "Print page", "Bookmark page",
+            "Scan QR code", "Generate QR code", "Site controls", "Privacy & protection", "Web stores", "Downloads", "Settings"
         )
         AlertDialog.Builder(activity).setTitle("Universal tools").setItems(items) { _, which ->
             when (which) {
@@ -40,12 +40,13 @@ object BrowserPowerCenter {
                 8 -> BrowserFeatureCenter.captureVisiblePage(activity, session)
                 9 -> BrowserFeatureCenter.printPage(activity, session)
                 10 -> bookmark(activity, currentUrlProvider())
-                11 -> BrowserAdvancedTools.showQrGenerator(activity, currentUrlProvider())
-                12 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
-                13 -> showPrivacy(activity, session)
-                14 -> showStores(activity)
-                15 -> DownloadCenter.show(activity)
-                16 -> BrowserSettingsCenter.show(activity, reload)
+                11 -> BrowserAdvancedTools.showQrScanner(activity)
+                12 -> BrowserAdvancedTools.showQrGenerator(activity, currentUrlProvider())
+                13 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
+                14 -> showPrivacy(activity, session)
+                15 -> showStores(activity)
+                16 -> DownloadCenter.show(activity)
+                17 -> BrowserSettingsCenter.show(activity, reload)
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -106,7 +107,11 @@ object BrowserPowerCenter {
 
     private fun share(activity: Activity, url: String) {
         if (url.isBlank()) return
-        activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url) }, "Share page"))
+        activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, url)
+            putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser")
+        }, "Share page"))
     }
 
     private fun bookmark(activity: Activity, url: String) {
@@ -119,7 +124,7 @@ object BrowserPowerCenter {
         val settings = session.settings
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
-            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
+            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"},
             "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear history", "Clear cookies", "Clear site data"
