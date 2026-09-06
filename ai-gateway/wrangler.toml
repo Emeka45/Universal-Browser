@@ -1,0 +1,12 @@
+name = "universal-ai-gateway"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[vars]
+AI_MODEL = "CHANGE_ME"
+ALLOW_PAGE_FETCH = "false"
+ALLOWED_ORIGINS = "*"
+
+# Set the following with Wrangler secrets. Never commit provider credentials.
+# wrangler secret put AI_API_KEY
+# wrangler secret put AI_BASE_URL
