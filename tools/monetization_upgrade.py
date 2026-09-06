@@ -1,28 +1,20 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GRADLE = ROOT / "app/build.gradle.kts"
-MANIFEST = ROOT / "app/src/main/AndroidManifest.xml"
-STRINGS = ROOT / "app/src/main/res/values/strings.xml"
-APP = ROOT / "app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt"
-MONETIZATION = ROOT / "app/src/main/java/com/coeric/universalbrowser/MonetizationCenter.kt"
+checks = [
+    (ROOT / "app/build.gradle.kts", 'com.google.android.gms:play-services-ads:25.4.0'),
+    (ROOT / "app/src/main/AndroidManifest.xml", 'com.google.android.gms.ads.APPLICATION_ID'),
+    (ROOT / "app/src/main/res/values/strings.xml", 'name="admob_banner_unit_id"'),
+    (ROOT / "app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt", 'MobileAds.initialize'),
+    (ROOT / "app/src/main/java/com/coeric/universalbrowser/MonetizationCenter.kt", 'AdSize.getLargeAnchoredAdaptiveBannerAdSize'),
+    (ROOT / "app/src/main/java/com/coeric/universalbrowser/MonetizationCenter.kt", 'widthPixels / density'),
+    (ROOT / "app/src/main/java/com/coeric/universalbrowser/MonetizationCenter.kt", 'loadAd(AdRequest.Builder().build())'),
+]
 
-# Monetization is now part of the product source tree. This script is deliberately
-# validation-only so CI never overwrites working browser code with stale upgrade
-# templates.
-required = {
-    GRADLE: 'com.google.android.gms:play-services-ads:25.4.0',
-    MANIFEST: 'com.google.android.gms.ads.APPLICATION_ID',
-    STRINGS: 'name="admob_banner_unit_id"',
-    APP: 'MobileAds.initialize',
-    MONETIZATION: 'AdSize.getLargeAnchoredAdaptiveBannerAdSize',
-    MONETIZATION: 'widthPixels / density',
-    MONETIZATION: 'loadAd(AdRequest.Builder().build())',
-}
-
-for path, needle in required.items():
-    text = path.read_text()
-    if needle not in text:
+# Validation-only: CI must never overwrite working browser code with a stale
+# upgrade template. Production IDs remain intentionally outside this commit.
+for path, needle in checks:
+    if needle not in path.read_text():
         raise SystemExit(f"Monetization integration is incomplete: {path} is missing {needle!r}")
 
 print("Monetization source integration validated; no source files were rewritten by CI.")
