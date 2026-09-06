@@ -36,3 +36,5 @@ The gateway uses an OpenAI-compatible `/chat/completions` provider endpoint. `AI
 5. Deploy with `wrangler deploy`.
 
 Cloudflare Worker environment bindings are supplied to the `fetch(request, env)` handler. Secrets should be stored as Worker secrets rather than committed to the repository.
+
+CI integration validation: Android media integration is applied automatically by `.github/workflows/media-ai-upgrade.yml`.
