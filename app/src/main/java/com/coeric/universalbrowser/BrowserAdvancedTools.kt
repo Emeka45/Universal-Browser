@@ -60,20 +60,17 @@ object BrowserAdvancedTools {
             .show()
     }
 
-    /** Saves an actual standalone offline reader snapshot using Gecko's page extractor. */
+    /** Saves an extracted standalone offline reader snapshot. */
     fun saveOfflineSnapshot(activity: Activity, session: GeckoSession) {
-        val extractor = session.getSessionPageExtractor()
-        extractor.getPageContent().accept(
+        session.getSessionPageExtractor().getPageContent().accept(
             { content ->
                 val text = content?.toString()?.trim().orEmpty()
                 if (text.isBlank()) {
                     toast(activity, "This page could not be extracted for offline reading")
                     return@accept
                 }
-                val title = try { Uri.parse(session.currentUri?.toString().orEmpty()).host ?: "Offline page" } catch (_: Throwable) { "Offline page" }
-                val url = session.currentUri?.toString().orEmpty()
                 try {
-                    val file = OfflinePageStore.save(activity, title, url, text)
+                    val file = OfflinePageStore.save(activity, "Offline page", "", text)
                     toast(activity, "Offline page saved: ${file.name}")
                 } catch (error: Throwable) {
                     toast(activity, "Offline save failed: ${error.message ?: "unknown error"}")
