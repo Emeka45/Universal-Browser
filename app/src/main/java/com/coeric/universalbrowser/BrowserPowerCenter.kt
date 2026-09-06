@@ -94,7 +94,11 @@ object BrowserPowerCenter {
                 val term = input.text.toString().trim()
                 if (term.isBlank()) return@setPositiveButton
                 session.finder.find(term, 0).accept(
-                    { result -> Toast.makeText(activity, if (result.found) "Found match ${result.current}" else "No match found", Toast.LENGTH_SHORT).show() },
+                    { result ->
+                        val found = result?.found == true
+                        val current = result?.current ?: 0
+                        Toast.makeText(activity, if (found) "Found match $current" else "No match found", Toast.LENGTH_SHORT).show()
+                    },
                     { error -> Toast.makeText(activity, "Find failed: ${error?.message ?: "unknown error"}", Toast.LENGTH_SHORT).show() }
                 )
             }.show()
@@ -115,7 +119,7 @@ object BrowserPowerCenter {
         val settings = session.settings
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
-            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
+            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"},
             "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear history", "Clear cookies", "Clear site data"
