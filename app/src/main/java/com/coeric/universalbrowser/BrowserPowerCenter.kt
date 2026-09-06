@@ -4,11 +4,8 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
-import android.view.View
 import android.webkit.CookieManager
 import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
@@ -118,7 +115,7 @@ object BrowserPowerCenter {
         val settings = session.settings
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
-            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"},
+            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
             "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear history", "Clear cookies", "Clear site data"
