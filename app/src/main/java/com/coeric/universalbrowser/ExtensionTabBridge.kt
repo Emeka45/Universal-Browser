@@ -40,12 +40,13 @@ class ExtensionTabBridge(
                 val created = tab.session
                 installSessionDelegate(source, created)
                 onSessionReady(created)
-                val requestedUrl = createDetails.url?.trim().orEmpty()
-                if (requestedUrl.isNotBlank()) created.loadUri(requestedUrl)
+
+                createDetails.url?.trim()?.takeIf { it.isNotBlank() }?.let {
+                    created.loadUri(it)
+                }
+
                 if (createDetails.active ?: false) {
-                    tabs.activate(tabs.indexOf(created))
-                    notifyActive(created)
-                    onSessionActivated(created)
+                    activateSessionSafely(created)
                 }
                 return GeckoResult.fromValue(created)
             }
@@ -64,6 +65,14 @@ class ExtensionTabBridge(
         }
     }
 
+    private fun activateSessionSafely(session: GeckoSession) {
+        val index = tabs.indexOf(session)
+        if (index < 0) return
+        if (tabs.activate(index) == null) return
+        notifyActive(session)
+        onSessionActivated(session)
+    }
+
     private fun installSessionDelegate(extension: WebExtension, session: GeckoSession) {
         session.getWebExtensionController().setTabDelegate(
             extension,
@@ -75,9 +84,7 @@ class ExtensionTabBridge(
                 ): GeckoResult<AllowOrDeny> {
                     details.url?.trim()?.takeIf { it.isNotBlank() }?.let { session.loadUri(it) }
                     if (details.active ?: false) {
-                        tabs.activate(tabs.indexOf(session))
-                        notifyActive(session)
-                        onSessionActivated(session)
+                        activateSessionSafely(session)
                     }
                     return GeckoResult.fromValue(AllowOrDeny.ALLOW)
                 }
