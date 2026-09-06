@@ -37,6 +37,11 @@ class UniversalBrowserApp : Application() {
             .fontSizeFactor(textScale)
             .fontInflation(true)
             .build()
-        return GeckoRuntime.create(this, settings).also { runtimeInstance = it }
+        return GeckoRuntime.create(this, settings).also {
+            runtimeInstance = it
+            // GeckoView 150+ supports explicit warm-up. Starting the content process
+            // before the first navigation reduces first-page latency on low-end devices.
+            it.warmUp()
+        }
     }
 }
