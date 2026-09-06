@@ -28,7 +28,19 @@ class DownloadTaskStore(context: Context) {
         save(tasks)
     }
 
-    @Synchronized fun update(id: String, url: String? = null, title: String? = null, state: String? = null, bytes: Long? = null, total: Long? = null, referer: String? = null, localUri: String? = null, mimeType: String? = null, tempPath: String? = null) {
+    @Synchronized fun update(
+        id: String,
+        url: String? = null,
+        title: String? = null,
+        state: String? = null,
+        bytes: Long? = null,
+        total: Long? = null,
+        referer: String? = null,
+        localUri: String? = null,
+        mimeType: String? = null,
+        tempPath: String? = null,
+        clearTempPath: Boolean = false
+    ) {
         val old = all().firstOrNull { it.id == id } ?: return
         upsert(old.copy(
             url = url ?: old.url,
@@ -39,7 +51,7 @@ class DownloadTaskStore(context: Context) {
             referer = referer ?: old.referer,
             localUri = localUri ?: old.localUri,
             mimeType = mimeType ?: old.mimeType,
-            tempPath = tempPath ?: old.tempPath
+            tempPath = if (clearTempPath) null else tempPath ?: old.tempPath
         ))
     }
 
@@ -54,9 +66,15 @@ class DownloadTaskStore(context: Context) {
                 for (i in 0 until json.length()) {
                     val o = json.getJSONObject(i)
                     add(Task(
-                        o.optString("id"), o.optString("url"), o.optString("title"), o.optString("state"),
-                        o.optLong("bytes"), o.optLong("total"), o.optLong("createdAt"),
-                        o.optString("referer"), o.optString("localUri").takeIf { it.isNotBlank() },
+                        o.optString("id"),
+                        o.optString("url"),
+                        o.optString("title"),
+                        o.optString("state"),
+                        o.optLong("bytes"),
+                        o.optLong("total"),
+                        o.optLong("createdAt"),
+                        o.optString("referer"),
+                        o.optString("localUri").takeIf { it.isNotBlank() },
                         o.optString("mimeType", "application/octet-stream"),
                         o.optString("tempPath").takeIf { it.isNotBlank() }
                     ))
