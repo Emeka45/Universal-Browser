@@ -34,7 +34,10 @@ jobs:
         with:
           gradle-version: '9.7.1'
 
-      - name: Validate committed source
+      - name: Integrate committed browser features
+        run: python3 tools/integrate_media_ai_upgrade.py
+
+      - name: Validate browser sources
         run: |
           set -euo pipefail
           test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
@@ -47,13 +50,25 @@ jobs:
             echo 'Unsupported GeckoView fingerprintingProtection API is still present.'
             exit 1
           fi
-          echo 'Committed browser sources validated.'
+          echo 'Browser sources validated.'
 
       - name: Validate source formatting
         run: git diff --check
 
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Commit generated media integration
+        run: |
+          if git diff --quiet; then
+            echo 'No generated integration changes to commit.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+            git commit -m 'feat: wire advanced media downloader'
+            git push
+          fi
 
       - name: Verify generated APK
         shell: bash
