@@ -34,70 +34,26 @@ jobs:
         with:
           gradle-version: '9.7.1'
 
-      - name: Verify Gradle
-        run: gradle --version
-
-      - name: Apply comprehensive browser upgrade
-        run: python3 tools/mega_upgrade.py
-
-      - name: Apply product browser upgrade
-        run: python3 tools/product_upgrade.py
-
-      - name: Apply real tab/session architecture
-        run: python3 tools/tab_upgrade.py
-
-      - name: Validate tab state integration
-        run: python3 tools/tab_state_fix.py
-
-      - name: Apply extension-to-tab integration
-        run: python3 tools/extension_tab_upgrade.py
-
-      - name: Validate extension-to-tab integration
-        run: |
-          set -euo pipefail
-          grep -q 'private lateinit var extensionTabBridge: ExtensionTabBridge' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'extensionTabBridge.bindSession(target)' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'extensionTabBridge.notifyActive(session)' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'override fun onNewTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
-          grep -q 'override fun onUpdateTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
-          grep -q 'override fun onCloseTab' app/src/main/java/com/coeric/universalbrowser/ExtensionTabBridge.kt
-          echo 'Extension-to-tab integration anchors validated.'
-
-      - name: Apply advanced browser upgrade
-        run: python3 tools/advanced_upgrade.py
-
-      - name: Validate monetization integration
-        run: python3 tools/monetization_upgrade.py
-
-      - name: Integrate advanced media downloader
-        run: python3 tools/integrate_media_ai_upgrade.py
-
-      - name: Validate media and AI gateway sources
+      - name: Validate committed source
         run: |
           set -euo pipefail
           test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           test -f ai-gateway/src/index.js
           grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'AdvancedMediaDownloadEngine.enqueue' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q '/v1/chat' ai-gateway/src/index.js
-          echo 'Media downloader and AI gateway anchors validated.'
+          if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then
+            echo 'Unsupported GeckoView fingerprintingProtection API is still present.'
+            exit 1
+          fi
+          echo 'Committed browser sources validated.'
 
       - name: Validate source formatting
         run: git diff --check
 
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
-
-      - name: Commit generated Android integration
-        run: |
-          if git diff --quiet; then
-            echo 'No generated integration changes to commit.'
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-            git commit -m 'feat: integrate advanced media downloader'
-            git push
-          fi
 
       - name: Verify generated APK
         shell: bash
@@ -111,6 +67,6 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: universal-browser-comprehensive-debug
+          name: universal-browser-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
