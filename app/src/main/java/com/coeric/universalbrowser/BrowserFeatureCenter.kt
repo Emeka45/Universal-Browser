@@ -2,8 +2,6 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Environment
@@ -30,10 +28,7 @@ object BrowserFeatureCenter {
                     val name = "Universal-${timestamp()}.pdf"
                     val file = File(dir, name)
                     input.use { source -> FileOutputStream(file).use { target -> source.copyTo(target) } }
-                    activity.runOnUiThread {
-                        toast(activity, "PDF saved to Downloads/$name")
-                        shareFile(activity, file, "application/pdf")
-                    }
+                    activity.runOnUiThread { toast(activity, "PDF saved to Downloads/$name") }
                 } catch (error: Throwable) {
                     activity.runOnUiThread { toast(activity, "PDF save failed: ${error.message ?: "unknown error"}") }
                 }
@@ -52,27 +47,32 @@ object BrowserFeatureCenter {
 
     fun captureVisiblePage(activity: Activity, session: GeckoSession) {
         try {
-            session.acquireDisplay().capturePixels().accept({ bitmap ->
-                if (bitmap == null) {
-                    activity.runOnUiThread { toast(activity, "Screenshot unavailable") }
-                    return@accept
-                }
-                Thread {
-                    try {
-                        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
-                        val folder = File(dir, "Universal Browser")
-                        if (!folder.exists()) folder.mkdirs()
-                        val file = File(folder, "Universal-${timestamp()}.png")
-                        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                        activity.runOnUiThread {
-                            toast(activity, "Screenshot saved to Pictures/Universal Browser")
-                            shareFile(activity, file, "image/png")
-                        }
-                    } catch (error: Throwable) {
-                        activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") }
+            val display = session.acquireDisplay()
+            display.capturePixels().accept({ bitmap ->
+                try {
+                    if (bitmap == null) {
+                        activity.runOnUiThread { toast(activity, "Screenshot unavailable") }
+                        return@accept
                     }
-                }.start()
-            }, { error -> activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") } })
+                    Thread {
+                        try {
+                            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                            val folder = File(dir, "Universal Browser")
+                            if (!folder.exists()) folder.mkdirs()
+                            val file = File(folder, "Universal-${timestamp()}.png")
+                            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                            activity.runOnUiThread { toast(activity, "Screenshot saved to Pictures/Universal Browser") }
+                        } catch (error: Throwable) {
+                            activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") }
+                        }
+                    }.start()
+                } finally {
+                    try { session.releaseDisplay(display) } catch (_: Throwable) { }
+                }
+            }, { error ->
+                try { session.releaseDisplay(display) } catch (_: Throwable) { }
+                activity.runOnUiThread { toast(activity, "Screenshot failed: ${error.message ?: "unknown error"}") }
+            })
         } catch (error: Throwable) {
             toast(activity, "Screenshot unavailable: ${error.message ?: "page is not ready"}")
         }
@@ -97,17 +97,6 @@ object BrowserFeatureCenter {
             }.setNegativeButton("Close", null).show()
     }
 
-    fun shareFile(context: Context, file: File, mime: String) {
-        val uri = Uri.fromFile(file)
-        try {
-            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = mime
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }, "Share with"))
-        } catch (_: Throwable) { }
-    }
-
     private fun timestamp(): String = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    private fun toast(context: Context, message: String) = Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    private fun toast(context: Activity, message: String) = Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 }
