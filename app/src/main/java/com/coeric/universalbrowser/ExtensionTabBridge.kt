@@ -7,8 +7,8 @@ import org.mozilla.geckoview.WebExtensionController
 
 /**
  * Connects GeckoView's WebExtension tabs API to Universal Browser's real tab
- * manager. This keeps extension-created and extension-controlled tabs inside
- * the same GeckoSession lifecycle used by the browser UI.
+ * manager. Extension-created tabs therefore enter the same GeckoSession
+ * lifecycle as browser-created tabs.
  */
 class ExtensionTabBridge(
     private val controller: WebExtensionController,
@@ -21,12 +21,8 @@ class ExtensionTabBridge(
 
     fun attachInstalledExtensions() {
         controller.list().accept(
-            { extensions ->
-                extensions.orEmpty().forEach { attach(it) }
-            },
-            { error ->
-                android.util.Log.w("UniversalBrowser", "Could not enumerate extensions", error)
-            }
+            { extensions -> extensions.orEmpty().forEach { attach(it) } },
+            { error -> android.util.Log.w("UniversalBrowser", "Could not enumerate extensions", error) }
         )
     }
 
@@ -40,23 +36,25 @@ class ExtensionTabBridge(
             ): GeckoResult<GeckoSession> {
                 val tab = tabs.create(privateMode = false)
                 val created = tab.session
-                created.openedForExtension(source.id)
+                installSessionDelegate(source, created)
                 onSessionReady(created)
                 val requestedUrl = createDetails.url?.trim().orEmpty()
                 if (requestedUrl.isNotBlank()) created.loadUri(requestedUrl)
                 if (createDetails.active) {
-                    val index = tabs.indexOf(created)
-                    tabs.activate(index)
+                    tabs.activate(tabs.indexOf(created))
                     onSessionActivated(created)
                 }
                 return GeckoResult.fromValue(created)
             }
         })
+
+        tabs.all().forEach { installSessionDelegate(extension, it.session) }
     }
 
     fun installSessionDelegate(extension: WebExtension, session: GeckoSession) {
-        session.getWebExtensionController().let { sessionController ->
-            sessionController.setTabDelegate(extension, object : WebExtension.SessionTabDelegate {
+        session.getWebExtensionController().setTabDelegate(
+            extension,
+            object : WebExtension.SessionTabDelegate {
                 override fun onUpdateTab(
                     extension: WebExtension,
                     session: GeckoSession,
@@ -74,17 +72,13 @@ class ExtensionTabBridge(
                     source: WebExtension?,
                     session: GeckoSession
                 ): GeckoResult<org.mozilla.geckoview.AllowOrDeny> {
-                    if (tabs.indexOf(session) < 0) return GeckoResult.deny
-                    tabs.close(tabs.indexOf(session))
+                    val index = tabs.indexOf(session)
+                    if (index < 0) return GeckoResult.deny
+                    tabs.close(index)
                     onSessionClosed(session)
                     return GeckoResult.allow
                 }
-            })
-        }
-    }
-
-    private fun GeckoSession.openedForExtension(@Suppress("UNUSED_PARAMETER") extensionId: String) {
-        // Marker helper kept deliberately side-effect free; Gecko owns the
-        // extension association while BrowserTabManager owns the session.
+            }
+        )
     }
 }
