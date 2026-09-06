@@ -14,7 +14,8 @@ class BrowserTabManager(private val runtime: GeckoRuntime) {
         val id: Long,
         val session: GeckoSession,
         val privateMode: Boolean,
-        var label: String = "New tab"
+        var label: String = "New tab",
+        var url: String = ""
     )
 
     private val tabs = mutableListOf<Tab>()
@@ -22,9 +23,7 @@ class BrowserTabManager(private val runtime: GeckoRuntime) {
     private var activeIndex = -1
 
     fun count(): Int = tabs.size
-
     fun all(): List<Tab> = tabs.toList()
-
     fun active(): Tab? = tabs.getOrNull(activeIndex)
 
     fun create(privateMode: Boolean = false): Tab {
@@ -73,6 +72,10 @@ class BrowserTabManager(private val runtime: GeckoRuntime) {
 
     fun updateLabel(session: GeckoSession, label: String) {
         tabs.firstOrNull { it.session === session }?.label = label.ifBlank { "New tab" }
+    }
+
+    fun updateUrl(session: GeckoSession, url: String) {
+        tabs.firstOrNull { it.session === session }?.url = url
     }
 
     fun indexOf(session: GeckoSession): Int = tabs.indexOfFirst { it.session === session }
