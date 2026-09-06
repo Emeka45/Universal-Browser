@@ -8,10 +8,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: universal-browser-${{ github.workflow }}-${{ github.ref }}
+  group: universal-browser-build-${{ github.workflow_ref }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,48 +34,32 @@ jobs:
         with:
           gradle-version: '9.7.1'
 
-      - name: Integrate committed browser features
-        run: python3 tools/integrate_media_ai_upgrade.py
-
-      - name: Validate browser sources
+      - name: Validate committed browser features
         run: |
           set -euo pipefail
           test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/DownloadTaskStore.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           test -f ai-gateway/src/index.js
           grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'AdvancedMediaDownloadEngine.enqueue' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q '/v1/chat' ai-gateway/src/index.js
-          if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then
-            echo 'Unsupported GeckoView fingerprintingProtection API is still present.'
-            exit 1
-          fi
-          echo 'Browser sources validated.'
+          if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
+          echo 'Universal Browser source validation passed.'
 
-      - name: Validate source formatting
+      - name: Check formatting
         run: git diff --check
 
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
-
-      - name: Commit generated media integration
-        run: |
-          if git diff --quiet; then
-            echo 'No generated integration changes to commit.'
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-            git commit -m 'feat: wire advanced media downloader'
-            git push
-          fi
 
       - name: Verify generated APK
         shell: bash
         run: |
           set -euo pipefail
           apk_count=$(find app/build/outputs/apk/debug -type f -name '*.apk' | wc -l)
-          echo "APK count: $apk_count"
           test "$apk_count" -ge 1
           find app/build/outputs/apk/debug -type f -name '*.apk' -print -exec file {} \; -exec du -h {} \;
 
