@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import org.mozilla.geckoview.GeckoSession
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -27,7 +26,7 @@ object BrowserFeatureCenter {
                 try {
                     val name = "Universal-${timestamp()}.pdf"
                     val uri = insertPublicFile(activity, name, "application/pdf", Environment.DIRECTORY_DOWNLOADS)
-                    if (uri == null) throw IllegalStateException("Android storage is unavailable")
+                        ?: throw IllegalStateException("Android storage is unavailable")
                     activity.contentResolver.openOutputStream(uri)?.use { output -> input.use { source -> source.copyTo(output) } }
                         ?: throw IllegalStateException("Could not open output file")
                     activity.runOnUiThread { toast(activity, "PDF saved to Downloads/$name") }
@@ -60,7 +59,7 @@ object BrowserFeatureCenter {
                         try {
                             val name = "Universal-${timestamp()}.png"
                             val uri = insertPublicFile(activity, name, "image/png", Environment.DIRECTORY_PICTURES, "Universal Browser")
-                            if (uri == null) throw IllegalStateException("Android storage is unavailable")
+                                ?: throw IllegalStateException("Android storage is unavailable")
                             activity.contentResolver.openOutputStream(uri)?.use { output -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, output) }
                                 ?: throw IllegalStateException("Could not open output file")
                             activity.runOnUiThread { toast(activity, "Screenshot saved to Pictures/Universal Browser") }
@@ -106,17 +105,10 @@ object BrowserFeatureCenter {
             put(MediaStore.MediaColumns.DISPLAY_NAME, name)
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH, relative)
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
         val collection = if (relativePath == Environment.DIRECTORY_PICTURES) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             else MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        val uri = activity.contentResolver.insert(collection, values) ?: return null
-        try {
-            // The caller writes the bytes. Marking pending false happens in a small
-            // follow-up so Android makes the file visible in Files immediately.
-            activity.contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
-        } catch (_: Throwable) { }
-        return uri
+        return activity.contentResolver.insert(collection, values)
     }
 
     private fun timestamp(): String = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
