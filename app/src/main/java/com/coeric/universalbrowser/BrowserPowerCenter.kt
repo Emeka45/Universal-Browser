@@ -57,6 +57,13 @@ object BrowserPowerCenter {
         }.setNegativeButton("Close", null).show()
     }
 
+    fun applyPreferences(activity: Activity, session: GeckoSession) {
+        val prefs = activity.getSharedPreferences(PREFS, 0)
+        val desktop = prefs.getBoolean(DESKTOP, false)
+        session.settings.setUserAgentMode(if (desktop) GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+        session.settings.setViewportMode(if (desktop) GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+    }
+
     private fun toggleDesktop(activity: Activity, session: GeckoSession, reload: () -> Unit) {
         val prefs = activity.getSharedPreferences(PREFS, 0)
         val enabled = !prefs.getBoolean(DESKTOP, false)

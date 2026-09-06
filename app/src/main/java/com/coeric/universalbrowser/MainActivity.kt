@@ -111,6 +111,7 @@ class MainActivity : Activity() {
     private fun ensureBrowserReady() {
         if (::session.isInitialized) return
         session = GeckoSession()
+        BrowserPowerCenter.applyPreferences(this, session)
         session.contentDelegate = object : GeckoSession.ContentDelegate {
             override fun onCrash(crashedSession: GeckoSession) { recoverSession("The page process stopped and was restarted.") }
             override fun onKill(killedSession: GeckoSession) { recoverSession("The page process was stopped by Android and was restarted.") }
@@ -213,6 +214,7 @@ class MainActivity : Activity() {
         addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
         row.addView(toolbarButton("↻", 21f) { if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload() else showHome() })
+        row.addView(toolbarButton("⚡", 21f) { BrowserPowerCenter.show(this, { if (::session.isInitialized) session else null }, { currentUrl }, { if (::session.isInitialized) session.reload() }) })
         row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
         outer.addView(row)
         return outer
