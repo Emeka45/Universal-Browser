@@ -11,17 +11,10 @@
         android:hardwareAccelerated="true"
         android:allowBackup="true"
         android:enableOnBackInvokedCallback="true">
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="@string/admob_app_id" />
-        <activity
-            android:name=".QrScannerActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified" />
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:screenOrientation="unspecified">
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="@string/admob_app_id" />
+        <activity android:name=".QrScannerActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".ExtensionInstallActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="unspecified">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
