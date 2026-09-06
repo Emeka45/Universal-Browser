@@ -1,6 +1,5 @@
 package com.coeric.universalbrowser
 
-import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Context
 import android.media.MediaScannerConnection
@@ -37,28 +36,25 @@ object AdvancedMediaDownloadEngine {
         val store = DownloadTaskStore(context)
         val taskId = "media-${System.currentTimeMillis()}"
         store.upsert(DownloadTaskStore.Task(taskId, url, title.ifBlank { "Universal media" }, "queued", 0L, -1L, System.currentTimeMillis(), referer))
+        val path = url.substringBefore('?').lowercase(Locale.US)
+        if (!path.endsWith(".m3u8") && !path.endsWith(".mpd")) {
+            onStarted("Direct media")
+            try {
+                DownloadService.start(context, taskId, url, title.ifBlank { "Universal media" }, referer)
+            } catch (t: Throwable) {
+                store.updateState(taskId, "failed")
+                onError(t.message ?: "Could not start download")
+            }
+            return
+        }
         Thread {
             try {
-                val path = url.substringBefore('?').lowercase(Locale.US)
                 when {
                     path.endsWith(".m3u8") -> { store.updateState(taskId, "downloading"); onStarted("HLS stream"); val result = downloadHls(context, url, title, referer); store.update(taskId, state = "completed", bytes = result.bytes, total = result.bytes); onFinished(result) }
-                    path.endsWith(".mpd") -> { store.updateState(taskId, "downloading"); onStarted("DASH stream"); val result = downloadDash(context, url, title, referer); store.update(taskId, state = "completed", bytes = result.bytes, total = result.bytes); onFinished(result) }
-                    else -> { onStarted("Direct media"); enqueueDirect(context, url, title, referer); store.updateState(taskId, "queued") }
+                    else -> { store.updateState(taskId, "downloading"); onStarted("DASH stream"); val result = downloadDash(context, url, title, referer); store.update(taskId, state = "completed", bytes = result.bytes, total = result.bytes); onFinished(result) }
                 }
             } catch (t: Throwable) { store.updateState(taskId, "failed"); onError(t.message ?: "Media download failed") }
         }.start()
-    }
-
-    private fun enqueueDirect(context: Context, url: String, title: String, referer: String) {
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url)).setTitle(title.ifBlank { "Universal media" })
-            .setDescription("Downloaded by Universal Browser")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(true).setAllowedOverRoaming(true)
-            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, safeFileName(url, title))
-        CookieManager.getInstance().getCookie(url)?.takeIf(String::isNotBlank)?.let { request.addRequestHeader("Cookie", it) }
-        if (referer.isNotBlank()) request.addRequestHeader("Referer", referer)
-        manager.enqueue(request)
     }
 
     private fun downloadHls(context: Context, sourceUrl: String, title: String, referer: String): Result {
