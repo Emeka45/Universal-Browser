@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: universal-browser-${{ github.workflow }}-${{ github.ref }}
@@ -69,11 +69,35 @@ jobs:
       - name: Validate monetization integration
         run: python3 tools/monetization_upgrade.py
 
+      - name: Integrate advanced media downloader
+        run: python3 tools/integrate_media_ai_upgrade.py
+
+      - name: Validate media and AI gateway sources
+        run: |
+          set -euo pipefail
+          test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
+          test -f ai-gateway/src/index.js
+          grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q '/v1/chat' ai-gateway/src/index.js
+          echo 'Media downloader and AI gateway anchors validated.'
+
       - name: Validate source formatting
         run: git diff --check
 
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Commit generated Android integration
+        run: |
+          if git diff --quiet; then
+            echo 'No generated integration changes to commit.'
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+            git commit -m 'feat: integrate advanced media downloader'
+            git push
+          fi
 
       - name: Verify generated APK
         shell: bash
