@@ -10,8 +10,8 @@ android {
         applicationId = "com.coeric.universalbrowser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 6
+        versionName = "0.6.0"
 
         // Redmi A1 compatibility: ship one directly installable ARMv7 APK.
         ndk {
@@ -39,4 +39,5 @@ android {
 
 dependencies {
     implementation("org.mozilla.geckoview:geckoview:153.0.20260727124451")
+    implementation("com.google.android.gms:play-services-ads:25.4.0")
 }
