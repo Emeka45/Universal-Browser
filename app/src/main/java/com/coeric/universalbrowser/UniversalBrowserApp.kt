@@ -34,6 +34,10 @@ class UniversalBrowserApp : Application() {
     fun getRuntime(): GeckoRuntime {
         runtimeInstance?.let { return it }
 
+        val textScale = getSharedPreferences("universal_browser_power", MODE_PRIVATE)
+            .getFloat("text_scale", 1.0f)
+            .coerceIn(0.8f, 2.0f)
+
         val settings = GeckoRuntimeSettings.Builder()
             // Required for addons.mozilla.org to communicate with the browser's
             // WebExtension controller and offer in-page extension installation.
@@ -43,7 +47,7 @@ class UniversalBrowserApp : Application() {
             .forceUserScalableEnabled(true)
             .doubleTapZoomingEnabled(true)
             .automaticFontSizeAdjustment(false)
-            .fontSizeFactor(1.0f)
+            .fontSizeFactor(textScale)
             .fontInflation(true)
             // Keep Gecko's fingerprinting protection enabled by default.
             .fingerprintingProtection(true)
