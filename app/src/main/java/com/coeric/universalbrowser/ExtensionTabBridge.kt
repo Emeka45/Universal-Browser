@@ -41,7 +41,7 @@ class ExtensionTabBridge(
                 onSessionReady(created)
                 val requestedUrl = createDetails.url?.trim().orEmpty()
                 if (requestedUrl.isNotBlank()) created.loadUri(requestedUrl)
-                if (createDetails.active) {
+                if (createDetails.active == true) {
                     tabs.activate(tabs.indexOf(created))
                     notifyActive(created)
                     onSessionActivated(created)
@@ -73,12 +73,12 @@ class ExtensionTabBridge(
                     details: WebExtension.UpdateTabDetails
                 ): GeckoResult<org.mozilla.geckoview.AllowOrDeny> {
                     details.url?.trim()?.takeIf { it.isNotBlank() }?.let { session.loadUri(it) }
-                    if (details.active) {
+                    if (details.active == true) {
                         tabs.activate(tabs.indexOf(session))
                         notifyActive(session)
                         onSessionActivated(session)
                     }
-                    return GeckoResult.allow
+                    return GeckoResult.allow()
                 }
 
                 override fun onCloseTab(
@@ -86,10 +86,10 @@ class ExtensionTabBridge(
                     session: GeckoSession
                 ): GeckoResult<org.mozilla.geckoview.AllowOrDeny> {
                     val index = tabs.indexOf(session)
-                    if (index < 0) return GeckoResult.deny
+                    if (index < 0) return GeckoResult.deny()
                     tabs.close(index)
                     onSessionClosed(session)
-                    return GeckoResult.allow
+                    return GeckoResult.allow()
                 }
             }
         )
