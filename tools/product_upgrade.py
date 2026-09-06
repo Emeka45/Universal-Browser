@@ -3,6 +3,17 @@ from pathlib import Path
 MAIN = Path('app/src/main/java/com/coeric/universalbrowser/MainActivity.kt')
 src = MAIN.read_text()
 
+
+def replace_required(needle: str, replacement: str, label: str):
+    global src
+    if replacement in src:
+        return
+    count = src.count(needle)
+    if count != 1:
+        raise SystemExit(f'Product upgrade anchor for {label} expected exactly once, found {count}')
+    src = src.replace(needle, replacement, 1)
+
+
 # Keep the repository source identical to the production download behavior.
 old_download = '''    private fun openDownloads() {
         try {
@@ -17,14 +28,12 @@ new_download = '''    private fun openDownloads() {
         DownloadCenter.show(this)
     }
 '''
-if old_download in src:
-    src = src.replace(old_download, new_download, 1)
+replace_required(old_download, new_download, 'Download Center integration')
 
 # Add persistent browser-tool state.
 field_anchor = '    private var lastMediaPromptAt = 0L\n'
 fields = '''    private var pageZoom = 1.0\n    private var readerMode = false\n    private val browserPrefs by lazy { getSharedPreferences("browser_preferences", MODE_PRIVATE) }\n'''
-if 'private var pageZoom = 1.0' not in src and field_anchor in src:
-    src = src.replace(field_anchor, field_anchor + fields, 1)
+replace_required(field_anchor, field_anchor + fields, 'browser tool state')
 
 # Extend the existing power-tools menu without replacing the rest of the browser UI.
 old_items = '''            "⭐ Add current page to bookmarks", "🔖 Bookmarks", "🕘 History",
@@ -36,8 +45,7 @@ new_items = '''            "⭐ Add current page to bookmarks", "🔖 Bookmarks"
             "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
             "🔍 Zoom in", "🔎 Zoom out", "↺ Reset zoom", "📖 Reader mode",
             "🌐 Search engine", "🧹 Clear browsing data", "⚙ Browser settings"'''
-if old_items in src:
-    src = src.replace(old_items, new_items, 1)
+replace_required(old_items, new_items, 'power-tools menu')
 
 old_when = '''                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2 -> showHistory()
                 3 -> toggleDesktopSite(); 4 -> findInPage(); 5 -> shareCurrentPage()
@@ -47,17 +55,13 @@ new_when = '''                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2
                 6 -> openDownloads(); 7 -> changePageZoom(0.10); 8 -> changePageZoom(-0.10)
                 9 -> resetPageZoom(); 10 -> toggleReaderMode(); 11 -> chooseSearchEngine()
                 12 -> clearBrowsingData(); 13 -> showBrowserSettings()'''
-if old_when in src:
-    src = src.replace(old_when, new_when, 1)
+replace_required(old_when, new_when, 'power-tools actions')
 
 methods = r'''
 
     private fun applyPageScript(script: String) {
         if (!::session.isInitialized) { toast("Open a page first."); return }
         val encoded = android.util.Base64.encodeToString(script.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-        // Use a data URL wrapper to avoid treating the page's URL as executable input.
-        // Gecko blocks cross-origin navigation, so this is intentionally limited to the
-        // current document's presentation changes through the browser's content pipeline.
         try {
             session.loadUri("javascript:(function(){eval(atob('$encoded'));})()")
         } catch (_: Throwable) {
@@ -92,7 +96,6 @@ methods = r'''
 
     private fun chooseSearchEngine() {
         val engines = arrayOf("Google", "Bing", "DuckDuckGo", "Brave Search")
-        val urls = arrayOf("https://www.google.com/search?q=", "https://www.bing.com/search?q=", "https://duckduckgo.com/?q=", "https://search.brave.com/search?q=")
         val current = browserPrefs.getInt("search_engine", 0)
         AlertDialog.Builder(this).setTitle("Default search engine").setSingleChoiceItems(engines, current) { dialog, which ->
             browserPrefs.edit().putInt("search_engine", which).apply()
@@ -107,10 +110,24 @@ if 'private fun changePageZoom(' not in src:
         raise SystemExit('MainActivity class terminator not found')
     src = src[:pos] + methods + src[pos:]
 
-# Restore saved zoom after activity creation when a page is available.
+# Restore saved zoom after activity creation.
 create_anchor = '        super.onCreate(savedInstanceState)\n'
 restore = '        pageZoom = browserPrefs.getFloat("page_zoom", 1.0f).toDouble()\n'
-if restore not in src and create_anchor in src:
-    src = src.replace(create_anchor, create_anchor + restore, 1)
+replace_required(create_anchor, create_anchor + restore, 'saved zoom restoration')
+
+# Fail closed if any expected product feature is missing after transformation.
+required = [
+    'DownloadCenter.show(this)',
+    'private var pageZoom = 1.0',
+    'private fun changePageZoom(delta: Double)',
+    'private fun resetPageZoom()',
+    'private fun toggleReaderMode()',
+    'private fun chooseSearchEngine()',
+    '"🔍 Zoom in"',
+    '"📖 Reader mode"',
+]
+missing = [needle for needle in required if needle not in src]
+if missing:
+    raise SystemExit('Product upgrade incomplete; missing: ' + ', '.join(missing))
 
 MAIN.write_text(src)
