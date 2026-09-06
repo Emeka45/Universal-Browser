@@ -124,7 +124,7 @@ object BrowserPowerCenter {
         val settings = session.settings
         val items = arrayOf(
             "Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}",
-            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"},
+            "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}",
             "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}",
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear history", "Clear cookies", "Clear site data"
