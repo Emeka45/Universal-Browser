@@ -37,4 +37,5 @@ android {
 dependencies {
     implementation("org.mozilla.geckoview:geckoview:153.0.20260727124451")
     implementation("com.google.android.gms:play-services-ads:25.4.0")
+    implementation("com.google.zxing:core:3.5.3")
 }
