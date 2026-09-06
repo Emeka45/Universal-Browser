@@ -2,21 +2,17 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.app.DownloadManager
-import android.content.Intent
 import android.content.Context
-import android.view.inputmethod.InputMethodManager
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Environment
 import android.view.Gravity
-import android.window.OnBackInvokedCallback
 import android.view.View
-import android.webkit.CookieManager
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -30,33 +26,27 @@ import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
 import org.mozilla.geckoview.WebExtension
 import org.mozilla.geckoview.WebExtensionController
-import java.util.Locale
 
+/**
+ * Main browser surface. BrowserTabManager owns every GeckoSession; MainActivity
+ * only attaches the selected session to the single GeckoView surface.
+ */
 class MainActivity : Activity() {
-    private lateinit var session: GeckoSession
+    private lateinit var browserView: GeckoView
+    private lateinit var homePanel: View
     private lateinit var addressBar: EditText
     private lateinit var progress: ProgressBar
-    private lateinit var homePanel: View
-    private lateinit var browserView: GeckoView
     private lateinit var backButton: TextView
     private lateinit var forwardButton: TextView
-    private var canGoBack = false
-    private var canGoForward = false
-    private var currentUrl = ""
+    private lateinit var tabButton: TextView
+
     private val browserData by lazy { BrowserDataStore(this) }
+    private lateinit var tabManager: BrowserTabManager
+    private var currentUrl = ""
     private var desktopMode = false
+    private var restored = false
     private var lastMediaUrl = ""
     private var lastMediaPromptAt = 0L
-
-    // Browser back navigation: edge swipes and the Android Back gesture must
-    // traverse GeckoView history before leaving the browser.
-    private val systemBackCallback = OnBackInvokedCallback {
-        if (::session.isInitialized && canGoBack) {
-            session.goBack()
-        } else {
-            finish()
-        }
-    }
 
     private val purple = Color.rgb(101, 72, 255)
     private val violet = Color.rgb(145, 74, 255)
@@ -71,6 +61,8 @@ class MainActivity : Activity() {
         window.statusBarColor = white
         window.navigationBarColor = white
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+
+        tabManager = BrowserTabManager(getRuntime(), TabStateStore(this))
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(white) }
         root.addView(buildToolbar())
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -86,131 +78,43 @@ class MainActivity : Activity() {
         browserView.visibility = View.GONE
         setContentView(root)
 
-        // Android 13+ delivers edge-swipe Back through OnBackInvokedDispatcher.
-        // The callback sends the gesture into GeckoView history instead of
-        // allowing the activity to close while a page can still go back.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            onBackInvokedDispatcher.registerOnBackInvokedCallback(
-                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
-                systemBackCallback
-            )
-        }
+        restoreTabsOrCreateInitial()
     }
 
-    @Suppress("DEPRECATION")
-    override fun onBackPressed() {
-        // Android 12 and earlier route the system edge-back gesture here.
-        // Prefer GeckoView history and only leave the activity at the root.
-        if (::session.isInitialized && canGoBack) {
-            session.goBack()
+    private fun restoreTabsOrCreateInitial() {
+        if (restored) return
+        restored = true
+        val restoredTabs = tabManager.restorePersistedTabs()
+        if (restoredTabs.isEmpty()) {
+            val tab = tabManager.createAndOpen(false)
+            attachTab(tab)
+            showHome()
         } else {
-            super.onBackPressed()
-        }
-    }
-
-    private fun ensureBrowserReady() {
-        if (::session.isInitialized) return
-        session = GeckoSession()
-        BrowserPowerCenter.applyPreferences(this, session)
-        session.contentDelegate = object : GeckoSession.ContentDelegate {
-            override fun onCrash(crashedSession: GeckoSession) { recoverSession("The page process stopped and was restarted.") }
-            override fun onKill(killedSession: GeckoSession) { recoverSession("The page process was stopped by Android and was restarted.") }
-        }
-        session.progressDelegate = object : GeckoSession.ProgressDelegate {
-            override fun onProgressChange(session: GeckoSession, value: Int) {
-                progress.progress = value
-                progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE
-            }
-        }
-        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
-            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
-                currentUrl = url ?: currentUrl
-                if (!url.isNullOrBlank()) browserData.recordVisit(url, url)
-                addressBar.setText(url ?: "")
-            }
-            override fun onCanGoBack(session: GeckoSession, value: Boolean) { canGoBack = value; backButton.alpha = if (value) 1f else 0.35f }
-            override fun onCanGoForward(session: GeckoSession, value: Boolean) { canGoForward = value; forwardButton.alpha = if (value) 1f else 0.35f }
-        }
-        getRuntime().webExtensionController.promptDelegate = extensionPromptDelegate
-        session.open(getRuntime())
-        browserView.setSession(session)
-        installMediaDetector()
-    }
-
-    private fun installMediaDetector() {
-        getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept(
-            { extension -> extension?.let { session.getWebExtensionController().setMessageDelegate(it, mediaMessageDelegate, NATIVE_APP_NAME) } },
-            { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
-        )
-    }
-
-    private val mediaMessageDelegate = object : WebExtension.MessageDelegate {
-        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-            if (nativeApp != NATIVE_APP_NAME || sender.session !== session || message !is JSONObject) return null
-            if (message.optString("type") != "media-playable") return null
-            val url = message.optString("url").trim()
-            if (!isDownloadableMediaUrl(url)) return null
-            runOnUiThread { offerMediaDownload(url, message.optString("title").trim().ifBlank { "Video" }) }
-            return null
-        }
-    }
-
-    private fun isDownloadableMediaUrl(url: String): Boolean =
-        AdvancedMediaDownloadEngine.isSupported(url)
-
-    private fun offerMediaDownload(url: String, title: String) {
-        val now = System.currentTimeMillis()
-        if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
-        lastMediaUrl = url
-        lastMediaPromptAt = now
-        val cleanTitle = title.replace(Regex("\\s+"), " ").trim().take(80)
-        AlertDialog.Builder(this).setTitle("Media ready to download")
-            .setMessage("Universal detected a playable video or audio file.\n\n$cleanTitle")
-            .setNegativeButton("Not now", null)
-            .setPositiveButton("Download") { _, _ -> enqueueMediaDownload(url, cleanTitle) }.show()
-    }
-
-    private fun enqueueMediaDownload(url: String, title: String) {
-        AdvancedMediaDownloadEngine.enqueue(
-            context = this,
-            url = url,
-            title = title,
-            referer = currentUrl,
-            onStarted = { runOnUiThread { toast("Media download started") } },
-            onFinished = { result ->
-                runOnUiThread { toast("${result.kind} download saved: ${result.fileName}") }
-            },
-            onError = { error -> runOnUiThread { toast("Media download failed: $error") } }
-        )
-    }
-
-    private fun buildMediaFilename(url: String, title: String): String {
-        val path = try { Uri.parse(url).lastPathSegment.orEmpty() } catch (_: Throwable) { "" }
-        val ext = Regex("\\.([A-Za-z0-9]{2,5})$").find(path.substringBefore('?'))?.groupValues?.get(1)?.lowercase(Locale.US)
-        val base = title.ifBlank { path.substringBeforeLast('.', path) }.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().take(90).ifBlank { "Universal-media" }
-        return if (ext != null && !base.lowercase(Locale.US).endsWith(".$ext")) "$base.$ext" else if (path.contains('.')) path.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(120) else "$base.mp4"
-    }
-
-    private fun recoverSession(message: String) {
-        runOnUiThread {
-            if (!::session.isInitialized) return@runOnUiThread
-            val target = currentUrl
-            try { session.open(getRuntime()); if (target.isNotBlank()) session.loadUri(target); toast(message) }
-            catch (_: Throwable) { showHome(); toast("Browser recovered. Please try the page again.") }
+            attachTab(tabManager.active() ?: restoredTabs.first())
+            showHome()
         }
     }
 
     private fun buildToolbar(): View {
-        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8.dp(), 8.dp(), 8.dp(), 8.dp()); setBackgroundColor(white) }
+        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8.dp(), 8.dp(), 8.dp(), 7.dp()); setBackgroundColor(white) }
         val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        backButton = toolbarButton("‹", 28f) { if (::session.isInitialized && canGoBack) session.goBack() }
-        forwardButton = toolbarButton("›", 28f) { if (::session.isInitialized && canGoForward) session.goForward() }
+        backButton = toolbarButton("‹", 28f) { activeSession()?.let { if (it.canGoBack) it.goBack() } }
+        forwardButton = toolbarButton("›", 28f) { activeSession()?.let { if (it.canGoForward) it.goForward() } }
         row.addView(backButton); row.addView(forwardButton)
-        row.addView(TextView(this).apply { text = "U"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat() }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
-        addressBar = EditText(this).apply { hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp()); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }
+        row.addView(TextView(this).apply {
+            text = "U"; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white)
+            background = gradient(intArrayOf(violet, purple, darkPurple), 13.dp()); elevation = 4.dp().toFloat()
+        }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { setMargins(3.dp(), 0, 7.dp(), 0) })
+        addressBar = EditText(this).apply {
+            hint = "Search or enter address"; textSize = 14.5f; isSingleLine = true; setTextColor(ink)
+            setHintTextColor(Color.rgb(145, 143, 158)); setPadding(16.dp(), 0, 14.dp(), 0); background = rounded(surface, 22.dp())
+            setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true }
+        }
         row.addView(addressBar, LinearLayout.LayoutParams(0, 44.dp(), 1f))
-        row.addView(toolbarButton("↻", 21f) { if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload() else showHome() })
-        row.addView(toolbarButton("⚡", 21f) { BrowserPowerCenter.show(this, { if (::session.isInitialized) session else null }, { currentUrl }, { if (::session.isInitialized) session.reload() }) })
+        tabButton = toolbarButton("1", 14f) { showTabs() }
+        row.addView(tabButton)
+        row.addView(toolbarButton("↻", 21f) { activeSession()?.reload() ?: showHome() })
+        row.addView(toolbarButton("⚡", 21f) { BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }) })
         row.addView(toolbarButton("⋮", 23f) { showBrowserMenu() })
         outer.addView(row)
         return outer
@@ -225,211 +129,225 @@ class MainActivity : Activity() {
         hero.addView(TextView(this).apply { text = "Your web. Your way."; textSize = 15f; setTextColor(Color.rgb(235, 231, 255)); gravity = Gravity.CENTER; setPadding(0, 4.dp(), 0, 20.dp()) })
         hero.addView(EditText(this).apply { hint = "Search the web or enter a URL"; textSize = 15f; isSingleLine = true; setTextColor(ink); setHintTextColor(Color.rgb(125, 123, 140)); setPadding(18.dp(), 0, 18.dp(), 0); background = rounded(white, 19.dp()); elevation = 5.dp().toFloat(); setOnEditorActionListener { _, _, _ -> navigate(text.toString()); true } }, LinearLayout.LayoutParams(-1, 54.dp()))
         content.addView(hero)
-        content.addView(sectionTitle("Quick access", "Jump back into what matters"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
-        val quick = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        quick.addView(quickCard("Google", "Search", "G") { navigate("https://www.google.com") }, cardParams())
-        quick.addView(quickCard("YouTube", "Watch", "▶") { navigate("https://www.youtube.com") }, cardParams())
-        quick.addView(quickCard("Wikipedia", "Explore", "W") { navigate("https://www.wikipedia.org") }, cardParams())
-        content.addView(quick)
-        content.addView(sectionTitle("Your browser", "Everything you need, without the clutter"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 22.dp(); bottomMargin = 10.dp() })
-        content.addView(featureCard("Extensions", "Install and manage Firefox + Chrome-compatible WebExtensions", "▣") { showExtensionManagerPage() })
-        content.addView(featureCard("Web Stores", "Firefox • Chrome • Edge • Opera extension stores", "◎") { showWebStores() }, featureParams())
-        content.addView(featureCard("Add-ons", "Browse signed Firefox-compatible extensions", "+") { navigate("https://addons.mozilla.org/android/") }, featureParams())
-        content.addView(featureCard("Media downloads", "Play supported media, then download it in one tap", "↓") { showMediaDownloadInfo() }, featureParams())
-        content.addView(featureCard("Power tools", "Bookmarks, history, desktop site, find, sharing and privacy", "⚙") { showPowerTools() }, featureParams())
-        content.addView(featureCard("Native AI assistant", "Ask about the current page, summarize, explain, rewrite or translate", "AI") { showAiAssistant() }, featureParams())
-        content.addView(featureCard("Private by design", "A full-featured Gecko browser for Android", "◈") { showAbout() }, featureParams())
-        content.addView(TextView(this).apply { text = "UNIVERSAL BROWSER  •  GECKOVIEW  •  BUILT FOR ANDROID"; textSize = 10f; letterSpacing = .08f; typeface = Typeface.DEFAULT_BOLD; setTextColor(Color.rgb(155, 152, 168)); gravity = Gravity.CENTER; setPadding(0, 26.dp(), 0, 0) })
+        content.addView(sectionTitle("Your browser", "Real tabs, private tabs and persistent sessions"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 24.dp(); bottomMargin = 10.dp() })
+        content.addView(featureCard("New tab", "Open another Gecko session", "+") { newTab(false) })
+        content.addView(featureCard("Private tab", "Isolated private browsing; never restored or persisted", "◈") { newTab(true) }, featureParams())
+        content.addView(featureCard("Tabs", "Switch, close and restore your open pages", "▣") { showTabs() }, featureParams())
+        content.addView(featureCard("Downloads", "Progress, paused state, retry, cancel and completed files", "↓") { DownloadCenter.show(this) }, featureParams())
+        content.addView(featureCard("Web Stores", "Firefox, Chrome, Edge and Opera extension catalogs", "◎") { showWebStores() }, featureParams())
+        content.addView(featureCard("Power tools", "Desktop site, zoom, reader, translation, PDF, screenshot and privacy", "⚙") { BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }) }, featureParams())
+        content.addView(featureCard("Universal AI", "Ask about the current page through the secure AI gateway", "AI") { showAiAssistant() }, featureParams())
         scroll.addView(content)
         return scroll
     }
 
-    private fun sectionTitle(title: String, subtitle: String): View {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        box.addView(TextView(this).apply { text = title; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
-        box.addView(TextView(this).apply { text = subtitle; textSize = 12f; setTextColor(muted); setPadding(0, 2.dp(), 0, 0) })
-        return box
+    private fun ensureTabOpen(): BrowserTabManager.Tab {
+        return tabManager.active() ?: tabManager.createAndOpen(false).also { attachTab(it) }
     }
 
-    private fun quickCard(title: String, subtitle: String, mark: String, action: () -> Unit): View {
-        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(5.dp(), 13.dp(), 5.dp(), 12.dp()); background = rounded(white, 18.dp()); elevation = 2.dp().toFloat(); setOnClickListener { action() } }
-        card.addView(TextView(this).apply { text = mark; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 13.dp()) }, LinearLayout.LayoutParams(39.dp(), 39.dp()).apply { bottomMargin = 8.dp() })
-        card.addView(TextView(this).apply { text = title; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); gravity = Gravity.CENTER })
-        card.addView(TextView(this).apply { text = subtitle; textSize = 10f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, 2.dp(), 0, 0) })
-        return card
+    private fun activeSession(): GeckoSession? = tabManager.active()?.session
+
+    private fun attachTab(tab: BrowserTabManager.Tab) {
+        browserView.setSession(tab.session)
+        BrowserPowerCenter.applyPreferences(this, tab.session)
+        currentUrl = tab.url
+        addressBar.setText(tab.url)
+        desktopMode = getSharedPreferences("universal_browser_power", 0).getBoolean("desktop_mode", false)
+        tab.session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onCrash(session: GeckoSession) { recoverActiveTab("The page process stopped and was restarted.") }
+            override fun onKill(session: GeckoSession) { recoverActiveTab("Android stopped the page process; the tab was recovered.") }
+        }
+        tab.session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onProgressChange(session: GeckoSession, value: Int) {
+                if (session === activeSession()) {
+                    progress.progress = value
+                    progress.visibility = if (value in 1..99) View.VISIBLE else View.GONE
+                }
+            }
+            override fun onSessionStateChange(session: GeckoSession, state: GeckoSession.SessionState) {
+                if (session === activeSession()) updateChromeState()
+            }
+        }
+        tab.session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLocationChange(session: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
+                if (session !== activeSession()) return
+                currentUrl = url ?: currentUrl
+                tab.url = currentUrl
+                if (currentUrl.isNotBlank()) browserData.recordVisit(currentUrl, tab.label.ifBlank { currentUrl })
+                addressBar.setText(currentUrl)
+                updateChromeState()
+            }
+            override fun onCanGoBack(session: GeckoSession, value: Boolean) { if (session === activeSession()) updateChromeState() }
+            override fun onCanGoForward(session: GeckoSession, value: Boolean) { if (session === activeSession()) updateChromeState() }
+        }
+        getRuntime().webExtensionController.promptDelegate = extensionPromptDelegate
+        installMediaDetector(tab.session)
+        updateChromeState()
     }
 
-    private fun featureCard(title: String, subtitle: String, mark: String, action: () -> Unit): View {
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(14.dp(), 13.dp(), 12.dp(), 13.dp()); background = rounded(white, 19.dp()); elevation = 2.dp().toFloat(); setOnClickListener { action() } }
-        row.addView(TextView(this).apply { text = mark; textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 15.dp()) }, LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { rightMargin = 13.dp() })
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
-        box.addView(TextView(this).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
-        box.addView(TextView(this).apply { text = subtitle; textSize = 11.5f; setTextColor(muted); setPadding(0, 3.dp(), 0, 0) })
-        row.addView(box); row.addView(TextView(this).apply { text = "›"; textSize = 25f; setTextColor(Color.rgb(150, 147, 166)) })
-        return row
+    private fun installMediaDetector(session: GeckoSession) {
+        getRuntime().webExtensionController.ensureBuiltIn("resource://android/assets/media-detector/", MEDIA_DETECTOR_ID).accept(
+            { extension -> extension?.let { session.getWebExtensionController().setMessageDelegate(it, mediaMessageDelegate, NATIVE_APP_NAME) } },
+            { error -> android.util.Log.e("UniversalBrowser", "Media detector unavailable", error) }
+        )
     }
 
-    private fun showMediaDownloadInfo() {
-        AlertDialog.Builder(this).setTitle("Universal Media Downloader")
-            .setMessage("Universal detects direct media plus non-DRM HLS/DASH manifests. Direct files use Android Download Manager; ordinary HLS segments can be assembled locally. DRM/encrypted streams and blob-only resources remain protected.")
-            .setPositiveButton("Got it", null).show()
+    private val mediaMessageDelegate = object : WebExtension.MessageDelegate {
+        override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
+            val active = activeSession()
+            if (nativeApp != NATIVE_APP_NAME || sender.session !== active || message !is JSONObject) return null
+            if (message.optString("type") != "media-playable") return null
+            val url = message.optString("url").trim()
+            if (!AdvancedMediaDownloadEngine.isSupported(url)) return null
+            runOnUiThread { offerMediaDownload(url, message.optString("title").trim().ifBlank { "Video" }) }
+            return null
+        }
     }
 
-    private fun showHome() { browserView.visibility = View.GONE; homePanel.visibility = View.VISIBLE; addressBar.setText(""); if (::session.isInitialized) session.setActive(false) }
+    private fun offerMediaDownload(url: String, title: String) {
+        val now = System.currentTimeMillis()
+        if (url == lastMediaUrl && now - lastMediaPromptAt < 8_000L) return
+        lastMediaUrl = url; lastMediaPromptAt = now
+        AlertDialog.Builder(this).setTitle("Media ready to download")
+            .setMessage(title.replace(Regex("\\s+"), " ").trim().take(100))
+            .setNegativeButton("Not now", null)
+            .setPositiveButton("Download") { _, _ ->
+                AdvancedMediaDownloadEngine.enqueue(this, url, title, currentUrl,
+                    onStarted = { runOnUiThread { toast("Media download started") } },
+                    onFinished = { result -> runOnUiThread { toast("${result.kind} saved: ${result.fileName}") } },
+                    onError = { error -> runOnUiThread { toast("Media download failed: $error") } })
+            }.show()
+    }
 
     private fun navigate(raw: String) {
         val input = raw.trim()
         if (input.isEmpty()) return
-        ensureBrowserReady()
+        val tab = ensureTabOpen()
         val uri = when {
             input.startsWith("http://", true) || input.startsWith("https://", true) -> input
             input.contains(".") && !input.contains(" ") -> "https://$input"
             else -> "https://www.google.com/search?q=${java.net.URLEncoder.encode(input, "UTF-8")}"
         }
-        currentUrl = uri
-        addressBar.setText(uri)
-        homePanel.visibility = View.GONE
-        browserView.visibility = View.VISIBLE
-        session.setActive(true)
-        session.loadUri(uri)
+        currentUrl = uri; tab.url = uri; tabManager.activate(tabManager.indexOf(tab.session))
+        homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE
+        tab.session.setActive(true); tab.session.setFocused(true); tab.session.loadUri(uri)
+        addressBar.setText(uri); updateChromeState()
+    }
+
+    private fun newTab(privateMode: Boolean) {
+        val tab = tabManager.createAndOpen(privateMode)
+        attachTab(tab)
+        showHome()
+        updateTabButton()
+        toast(if (privateMode) "Private tab opened" else "New tab opened")
+    }
+
+    private fun switchTab(index: Int) {
+        val tab = tabManager.activate(index) ?: return
+        attachTab(tab)
+        if (tab.url.isBlank()) showHome() else { homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE }
+        updateTabButton()
+    }
+
+    private fun closeTab(index: Int) {
+        val next = tabManager.close(index)
+        if (next == null) {
+            val created = tabManager.createAndOpen(false)
+            attachTab(created); showHome()
+        } else {
+            attachTab(next)
+            if (next.url.isBlank()) showHome() else { homePanel.visibility = View.GONE; browserView.visibility = View.VISIBLE }
+        }
+        updateTabButton()
+    }
+
+    private fun showTabs() {
+        val tabs = tabManager.all()
+        val labels = tabs.mapIndexed { index, tab ->
+            val marker = if (tab.privateMode) "🔒 " else ""
+            val active = if (index == tabManager.activeIndex()) " ✓" else ""
+            "$marker${tab.label.ifBlank { tab.url.ifBlank { "New tab" } }}$active\n${tab.url.ifBlank { "New tab" }}"
+        }.toTypedArray()
+        val dialog = AlertDialog.Builder(this).setTitle("Tabs (${tabs.size})").setItems(labels) { _, which -> switchTab(which) }
+            .setNegativeButton("Close", null)
+        dialog.setNeutralButton("+ New tab") { _, _ -> newTab(false) }
+        dialog.setPositiveButton("Private tab") { _, _ -> newTab(true) }
+        dialog.show()
+        if (tabs.isNotEmpty()) {
+            val list = dialog.create().listView
+            list?.setOnItemLongClickListener { _, _, position, _ ->
+                closeTab(position); true
+            }
+        }
+    }
+
+    private fun showHome() {
+        homePanel.visibility = View.VISIBLE; browserView.visibility = View.GONE
+        addressBar.setText("")
+        activeSession()?.setActive(true)
+        updateTabButton()
+    }
+
+    private fun updateChromeState() {
+        val session = activeSession()
+        val canBack = session?.canGoBack == true
+        val canForward = session?.canGoForward == true
+        backButton.alpha = if (canBack) 1f else .35f
+        forwardButton.alpha = if (canForward) 1f else .35f
+        updateTabButton()
+    }
+
+    private fun updateTabButton() { if (::tabButton.isInitialized) tabButton.text = tabManager.count().toString() }
+
+    private fun recoverActiveTab(message: String) {
+        runOnUiThread {
+            val tab = tabManager.active() ?: return@runOnUiThread
+            val target = tab.url
+            try {
+                if (!tab.session.isOpen) tab.session.open(getRuntime())
+                if (target.isNotBlank()) tab.session.loadUri(target)
+                toast(message)
+            } catch (_: Throwable) { showHome() }
+        }
     }
 
     private fun showBrowserMenu() {
-        val items = arrayOf("Home", "Extensions", "Web Stores", "Check Chrome extension", "Browse Add-ons", "Media Downloads", "Reload", "About Universal")
+        val items = arrayOf("Home", "New tab", "New private tab", "Tabs", "Downloads", "Extensions", "Web Stores", "Power tools", "Universal AI", "About Universal")
         AlertDialog.Builder(this).setTitle("Universal").setItems(items) { _, which ->
             when (which) {
-                0 -> showHome()
-                1 -> showExtensionManagerPage()
-                2 -> showWebStores()
-                3 -> openExtensionPicker()
-                4 -> navigate("https://addons.mozilla.org/android/")
-                5 -> showMediaDownloadInfo()
-                6 -> if (::session.isInitialized && browserView.visibility == View.VISIBLE) session.reload()
-                7 -> showAbout()
+                0 -> showHome(); 1 -> newTab(false); 2 -> newTab(true); 3 -> showTabs(); 4 -> DownloadCenter.show(this)
+                5 -> showExtensions(); 6 -> showWebStores(); 7 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() })
+                8 -> showAiAssistant(); 9 -> showAbout()
             }
         }.show()
     }
 
-    private fun showWebStores() {
-        val stores = arrayOf(
-            "Firefox Add-ons (AMO)",
-            "Chrome Web Store",
-            "Microsoft Edge Add-ons",
-            "Opera Add-ons",
-            "Install local .XPI / .CRX / ZIP"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("Extension Web Stores")
-            .setMessage("Browse official extension catalogs from inside Universal Browser. Installation is offered only when GeckoView accepts the package and its signing/compatibility requirements are satisfied.")
-            .setItems(stores) { _, which ->
-                when (which) {
-                    0 -> navigate("https://addons.mozilla.org/android/")
-                    1 -> navigate("https://chromewebstore.google.com/")
-                    2 -> navigate("https://microsoftedge.microsoft.com/addons/Microsoft-Edge-Extensions-Home")
-                    3 -> navigate("https://addons.opera.com/en/extensions/")
-                    4 -> openExtensionPicker()
-                }
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
-    private fun showExtensionManagerPage() {
+    private fun showExtensions() {
         getRuntime().webExtensionController.list().accept(
-            { extensions -> runOnUiThread { renderExtensionManager(extensions ?: emptyList()) } },
+            { extensions -> runOnUiThread {
+                val names = (extensions ?: emptyList()).map { e -> "${e.metaData.name ?: e.id}  •  ${if (e.metaData.enabled) "Enabled" else "Disabled"}" }.toTypedArray()
+                AlertDialog.Builder(this).setTitle("Extensions")
+                    .setMessage(if (names.isEmpty()) "No extensions installed.\n\nUse Check Chrome extension to inspect a local package." else names.joinToString("\n"))
+                    .setPositiveButton("Web stores", { _, _ -> showWebStores() }).setNegativeButton("Done", null).show()
+            } },
             { error -> runOnUiThread { toast("Could not load extensions: ${error?.message ?: "unknown error"}") } }
         )
     }
 
-    private fun renderExtensionManager(extensions: List<WebExtension>) {
-        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18.dp(), 6.dp(), 18.dp(), 10.dp()) }
-        outer.addView(TextView(this).apply { text = "Universal now scans Chrome/Firefox packages before installation."; textSize = 12.5f; setTextColor(muted); setPadding(0, 0, 0, 12.dp()) })
-        if (extensions.isEmpty()) {
-            val empty = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(12.dp(), 18.dp(), 12.dp(), 18.dp()); background = rounded(surface, 18.dp()) }
-            empty.addView(TextView(this).apply { text = "No extensions installed"; textSize = 17f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); gravity = Gravity.CENTER })
-            empty.addView(TextView(this).apply { text = "Use the scanner below to inspect a .crx, .xpi or ZIP WebExtension."; textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(8.dp(), 5.dp(), 8.dp(), 12.dp()) })
-            outer.addView(empty)
-        } else {
-            extensions.forEach { extension ->
-                val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
-                val enabled = extension.metaData.enabled
-                val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(10.dp(), 10.dp(), 6.dp(), 10.dp()); background = rounded(surface, 16.dp()) }
-                row.addView(TextView(this).apply { text = "✦"; textSize = 17f; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 12.dp()) }, LinearLayout.LayoutParams(42.dp(), 42.dp()).apply { rightMargin = 10.dp() })
-                val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
-                box.addView(TextView(this).apply { text = name; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) })
-                box.addView(TextView(this).apply { text = if (enabled) "Enabled" else "Disabled"; textSize = 10.5f; setTextColor(if (enabled) Color.rgb(54, 139, 83) else muted) })
-                row.addView(box)
-                row.addView(toolbarButton(if (enabled) "OFF" else "ON", 10f) { val result = if (enabled) getRuntime().webExtensionController.disable(extension, WebExtensionController.EnableSource.USER) else getRuntime().webExtensionController.enable(extension, WebExtensionController.EnableSource.USER); result.accept({ showExtensionManagerPage() }, { error -> toast("Extension change failed: ${error?.message ?: "unknown error"}") }) })
-                row.addView(toolbarButton("×", 20f) { AlertDialog.Builder(this).setTitle("Remove $name?").setMessage("This will uninstall the extension and its stored data.").setNegativeButton("Cancel", null).setPositiveButton("Remove") { _, _ -> getRuntime().webExtensionController.uninstall(extension).accept({ showExtensionManagerPage() }, { error -> toast("Remove failed: ${error?.message ?: "unknown error"}") }) }.show() })
-                outer.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 7.dp() })
-            }
-        }
-        val scan = TextView(this).apply { text = "＋  Scan / install Chrome or Firefox extension"; textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER_VERTICAL; setTextColor(white); setPadding(18.dp(), 0, 18.dp(), 0); background = gradient(intArrayOf(purple, violet), 16.dp()); setOnClickListener { openExtensionPicker() } }
-        outer.addView(scan, LinearLayout.LayoutParams(-1, 50.dp()).apply { topMargin = 12.dp() })
-        outer.addView(TextView(this).apply { text = "Browse Firefox Add-ons"; textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(purple); setOnClickListener { navigate("https://addons.mozilla.org/android/") } }, LinearLayout.LayoutParams(-1, 45.dp()))
-        AlertDialog.Builder(this).setTitle("Universal Extensions").setView(outer).setPositiveButton("Done", null).show()
+    private fun showWebStores() {
+        val stores = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
+        val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
+        AlertDialog.Builder(this).setTitle("Extension web stores").setItems(stores) { _, which -> navigate(urls[which]) }.setNegativeButton("Close", null).show()
     }
 
-    private fun openExtensionPicker() {
-        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-xpinstall", "application/x-chrome-extension", "application/zip", "application/octet-stream"))
-        }, REQUEST_EXTENSION)
-    }
-
-    @Deprecated("Deprecated in Android API 33")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_EXTENSION && resultCode == RESULT_OK) data?.data?.let { inspectExtension(it) }
-    }
-
-    private fun inspectExtension(uri: Uri) {
-        toast("Scanning extension…")
-        Thread {
-            try {
-                val report = ExtensionCompatibilityEngine.analyzeAndPrepare(this, uri)
-                runOnUiThread { showCompatibilityReport(report) }
-            } catch (error: Throwable) {
-                runOnUiThread { toast("Extension scan failed: ${error.message ?: "invalid package"}") }
-            }
-        }.start()
-    }
-
-    private fun showCompatibilityReport(report: ExtensionCompatibilityEngine.Report) {
-        val levelText = when (report.level) {
-            ExtensionCompatibilityEngine.Level.FULL -> "🟢 HIGH COMPATIBILITY"
-            ExtensionCompatibilityEngine.Level.HIGH -> "🟢 COMPATIBILITY PREPARED"
-            ExtensionCompatibilityEngine.Level.PARTIAL -> "🟡 PARTIAL COMPATIBILITY"
-            ExtensionCompatibilityEngine.Level.UNSUPPORTED -> "🔴 UNSUPPORTED API DETECTED"
-        }
-        val details = buildString {
-            append("$levelText\n\n")
-            append("${report.name}  •  v${report.version}\n")
-            append("Manifest V${report.manifestVersion}  •  ${report.sourceFormat}\n\n")
-            report.reasons.forEach { append("• $it\n") }
-        }
-        val builder = AlertDialog.Builder(this).setTitle("Universal Compatibility Check").setMessage(details).setNegativeButton("Cancel", null)
-        if (report.level != ExtensionCompatibilityEngine.Level.UNSUPPORTED) {
-            builder.setPositiveButton("Try install") { _, _ -> installPreparedExtension(report) }
-        }
-        builder.show()
-    }
-
-    private fun installPreparedExtension(report: ExtensionCompatibilityEngine.Report) {
-        val fileUri = Uri.fromFile(report.preparedFile).toString()
-        getRuntime().webExtensionController.install(fileUri, WebExtensionController.INSTALLATION_METHOD_FROM_FILE).accept(
-            { extension -> runOnUiThread { toast("${extension?.metaData?.name ?: report.name} installed") } },
-            { error -> runOnUiThread {
-                val message = error?.message ?: "Gecko rejected this package"
-                AlertDialog.Builder(this).setTitle("Installation blocked").setMessage("Universal prepared the extension, but GeckoView did not accept it.\n\n$message\n\nSome Chrome extensions need a Mozilla-signed Firefox package. Universal cannot safely remove Gecko's signature requirement.").setPositiveButton("OK", null).show()
-            } }
-        )
+    private fun showAiAssistant() {
+        if (currentUrl.isBlank()) { toast("Open a webpage first"); return }
+        AiAssistantView.show(this, currentUrl)
     }
 
     private fun showAbout() {
         AlertDialog.Builder(this).setTitle("Universal Browser")
-            .setMessage("A full-featured Gecko browser built around GeckoView and WebExtensions.\n\nThe extension system now includes a Chrome/Firefox package scanner and conservative Manifest V3 compatibility preparation.\n\nVersion 0.7.0")
+            .setMessage("GeckoView browser with real multi-session tabs, private browsing isolation, WebExtensions, media downloads and native AI foundation.\n\nNormal tabs persist session state across restarts. Private tabs are never persisted.")
             .setPositiveButton("Done", null).show()
     }
 
@@ -439,7 +357,7 @@ class MainActivity : Activity() {
             val name = extension.metaData.name?.takeIf { it.isNotBlank() } ?: extension.id
             val requested = (permissions.toList() + origins.toList() + dataCollectionPermissions.toList()).distinct().joinToString("\n").ifBlank { "No additional permissions listed." }
             runOnUiThread {
-                AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("This extension is requesting:\n\n$requested")
+                AlertDialog.Builder(this@MainActivity).setTitle("Install $name?").setMessage("This extension requests:\n\n$requested")
                     .setNegativeButton("Cancel") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }
                     .setPositiveButton("Install") { _, _ -> result.complete(WebExtension.PermissionPromptResponse(true, false, false)) }
                     .setOnCancelListener { result.complete(WebExtension.PermissionPromptResponse(false, false, false)) }.show()
@@ -448,8 +366,31 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onPause() {
+        tabManager.persist()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) onBackInvokedDispatcher.unregisterOnBackInvokedCallback(systemBackCallback)
+        tabManager.persist()
+        super.onDestroy()
+    }
+
+    private val systemBackCallback = android.window.OnBackInvokedCallback {
+        val session = activeSession()
+        if (session?.canGoBack == true) session.goBack() else if (homePanel.visibility == View.VISIBLE) finish() else showHome()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        val session = activeSession()
+        if (session?.canGoBack == true) session.goBack() else if (homePanel.visibility == View.VISIBLE) super.onBackPressed() else showHome()
+    }
+
     private fun toolbarButton(label: String, size: Float, action: () -> Unit) = TextView(this).apply { text = label; textSize = size; gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink); setOnClickListener { action() }; background = rounded(Color.TRANSPARENT, 12.dp()); layoutParams = LinearLayout.LayoutParams(40.dp(), 42.dp()) }
-    private fun cardParams() = LinearLayout.LayoutParams(0, 112.dp(), 1f).apply { setMargins(4.dp(), 0, 4.dp(), 0) }
+    private fun sectionTitle(title: String, subtitle: String): View = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(TextView(this@MainActivity).apply { text = title; textSize = 19f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 12f; setTextColor(muted); setPadding(0, 2.dp(), 0, 0) }) }
+    private fun featureCard(title: String, subtitle: String, mark: String, action: () -> Unit): View = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(14.dp(), 13.dp(), 12.dp(), 13.dp()); background = rounded(white, 19.dp()); elevation = 2.dp().toFloat(); setOnClickListener { action() }; addView(TextView(this@MainActivity).apply { text = mark; textSize = 21f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER; setTextColor(white); background = gradient(intArrayOf(purple, violet), 15.dp()) }, LinearLayout.LayoutParams(48.dp(), 48.dp()).apply { rightMargin = 13.dp() }); addView(LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, -2, 1f); addView(TextView(this@MainActivity).apply { text = title; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; setTextColor(ink) }); addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 11.5f; setTextColor(muted); setPadding(0, 3.dp(), 0, 0) }) }); addView(TextView(this@MainActivity).apply { text = "›"; textSize = 25f; setTextColor(Color.rgb(150, 147, 166)) }) }
     private fun featureParams() = LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp() }
     private fun getRuntime(): GeckoRuntime = (application as UniversalBrowserApp).getRuntime()
     private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
@@ -458,116 +399,7 @@ class MainActivity : Activity() {
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
 
     companion object {
-        private const val REQUEST_EXTENSION = 7101
         private const val MEDIA_DETECTOR_ID = "media-detector@universalbrowser.coeric"
         private const val NATIVE_APP_NAME = "browser"
     }
-
-    private fun showPowerTools() {
-        val items = arrayOf(
-            "⭐ Add current page to bookmarks", "🔖 Bookmarks", "🕘 History",
-            if (desktopMode) "📱 Switch to mobile site" else "🖥 Desktop site",
-            "🔎 Find in page", "↗ Share current page", "⬇ Downloads",
-            "🧹 Clear browsing data", "⚙ Browser settings"
-        )
-        AlertDialog.Builder(this).setTitle("Universal Browser").setItems(items) { _, which ->
-            when (which) {
-                0 -> addCurrentBookmark(); 1 -> showBookmarks(); 2 -> showHistory()
-                3 -> toggleDesktopSite(); 4 -> findInPage(); 5 -> shareCurrentPage()
-                6 -> openDownloads(); 7 -> clearBrowsingData(); 8 -> showBrowserSettings()
-            }
-        }.show()
-    }
-
-    private fun addCurrentBookmark() {
-        if (currentUrl.isBlank()) { toast("Open a page first."); return }
-        browserData.addBookmark(currentUrl, currentUrl); toast("Bookmarked")
-    }
-
-    private fun showBookmarks() {
-        val entries = browserData.bookmarks()
-        if (entries.isEmpty()) { toast("No bookmarks yet."); return }
-        val labels = entries.map { "${it.title}\n${it.url}" }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Bookmarks").setItems(labels) { _, which -> navigate(entries[which].url) }
-            .setNegativeButton("Close", null).show()
-    }
-
-    private fun showHistory() {
-        val entries = browserData.history()
-        if (entries.isEmpty()) { toast("No history yet."); return }
-        val labels = entries.take(100).map { "${it.title}\n${it.url}" }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("History").setItems(labels) { _, which -> navigate(entries[which].url) }
-            .setNeutralButton("Clear") { _, _ -> browserData.clearHistory(); toast("History cleared") }
-            .setNegativeButton("Close", null).show()
-    }
-
-    private fun toggleDesktopSite() {
-        if (!::session.isInitialized) { toast("Open a page first."); return }
-        desktopMode = !desktopMode
-        session.settings.setUserAgentMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
-        session.settings.setViewportMode(if (desktopMode) org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_DESKTOP else org.mozilla.geckoview.GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
-        session.reload()
-        toast(if (desktopMode) "Desktop site enabled" else "Mobile site enabled")
-    }
-
-    private fun findInPage() {
-        if (!::session.isInitialized) { toast("Open a page first."); return }
-        val input = EditText(this).apply { hint = "Find on this page"; isSingleLine = true }
-        AlertDialog.Builder(this).setTitle("Find in page").setView(input)
-            .setNegativeButton("Close") { _, _ -> session.finder.clear() }
-            .setPositiveButton("Find") { _, _ ->
-                val q = input.text.toString().trim()
-                if (q.isNotEmpty()) {
-                    session.finder.setDisplayFlags(org.mozilla.geckoview.GeckoSession.FINDER_DISPLAY_HIGHLIGHT_ALL)
-                    session.finder.find(q, org.mozilla.geckoview.GeckoSession.FINDER_FIND_FORWARD)
-                }
-            }.show()
-        input.requestFocus()
-        input.postDelayed({ (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, InputMethodManager.SHOW_IMPLICIT) }, 150)
-    }
-
-    private fun shareCurrentPage() {
-        if (currentUrl.isBlank()) { toast("Open a page first."); return }
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"; putExtra(Intent.EXTRA_TEXT, currentUrl); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser")
-        }, "Share page"))
-    }
-
-    private fun openDownloads() {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW).apply {
-                type = "resource/folder"
-                data = Uri.parse(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).toURI().toString())
-            })
-        } catch (_: Throwable) { toast("Open the Downloads app to view downloaded files.") }
-    }
-
-    private fun clearBrowsingData() {
-        AlertDialog.Builder(this).setTitle("Clear browsing data")
-            .setMessage("Clear history and site cookies? Downloaded files and bookmarks are kept.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Clear") { _, _ ->
-                browserData.clearHistory(); CookieManager.getInstance().removeAllCookies(null); CookieManager.getInstance().flush(); toast("Browsing data cleared")
-            }.show()
-    }
-
-    private fun showBrowserSettings() {
-        AlertDialog.Builder(this).setTitle("Browser settings")
-            .setItems(arrayOf("Extension stores", "Privacy information", "About Universal Browser")) { _, which ->
-                when (which) {
-                    0 -> showWebStores()
-                    1 -> AlertDialog.Builder(this).setTitle("Privacy").setMessage("Universal Browser uses GeckoView and can clear site cookies and browsing history. Extension permissions remain under the Extensions manager.").setPositiveButton("OK", null).show()
-                    2 -> showAbout()
-                }
-            }.show()
-    }
-
-    private fun showAiAssistant() {
-        if (!::session.isInitialized || currentUrl.isBlank()) {
-            AlertDialog.Builder(this).setTitle("Universal AI").setMessage("Open a webpage first. The native AI assistant works with the current page and your prompt through a secure HTTPS provider endpoint.").setPositiveButton("OK", null).show()
-            return
-        }
-        AiAssistantView.show(this, currentUrl)
-    }
-
 }
