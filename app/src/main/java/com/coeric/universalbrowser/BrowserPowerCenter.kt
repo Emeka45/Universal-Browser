@@ -101,7 +101,7 @@ object BrowserPowerCenter {
                 3 -> BrowserSecurityController.setBlockThirdPartyCookies(activity, !BrowserSecurityController.blockThirdPartyCookies(activity))
                 4 -> BrowserDataStore(activity).clearHistory()
                 5 -> { CookieManager.getInstance().removeAllCookies { }; CookieManager.getInstance().flush() }
-                6 -> { BrowserDataStore(activity).clearHistory(); BrowserSecurityController.clearBrowsingData() }
+                6 -> { BrowserDataStore(activity).clearHistory(); BrowserSecurityController.clearBrowsingData((activity.application as UniversalBrowserApp).getRuntime()) }
             }
             Toast.makeText(activity, "Privacy setting updated", Toast.LENGTH_SHORT).show()
         }.setNegativeButton("Close", null).show()
