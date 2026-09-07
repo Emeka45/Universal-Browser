@@ -23,6 +23,10 @@ class UniversalBrowserApp : Application() {
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
             override fun onActivityDestroyed(activity: Activity) = Unit
         })
+        // Media detection is a browser capability, not an AI feature. Install the
+        // small privileged detector once so every GeckoSession can report playable
+        // media sources to the native Quetta-style download UI.
+        MediaBridge.initialize(this, getRuntime())
     }
 
     @Synchronized
