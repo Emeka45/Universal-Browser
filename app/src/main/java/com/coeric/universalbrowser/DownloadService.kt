@@ -12,14 +12,13 @@ import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
-import android.webkit.CookieManager
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** User-initiated, resumable direct-file downloader. HLS/DASH remain on the media engine. */
+/** User-initiated, resumable direct-file downloader using headers captured from Gecko. */
 class DownloadService : Service() {
     companion object {
         const val ACTION_START = "com.coeric.universalbrowser.download.START"
@@ -30,8 +29,12 @@ class DownloadService : Service() {
         private const val CHANNEL = "universal_downloads"
         private const val NOTIFICATION_ID = 4701
 
-        fun start(context: Context, id: String, url: String, title: String, referer: String) {
-            val intent = Intent(context, DownloadService::class.java).apply { action = ACTION_START; putExtra(EXTRA_ID, id); putExtra("url", url); putExtra("title", title); putExtra("referer", referer) }
+        fun start(context: Context, id: String, url: String, title: String, referer: String, cookies: String = "") {
+            val intent = Intent(context, DownloadService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_ID, id); putExtra("url", url); putExtra("title", title)
+                putExtra("referer", referer); putExtra("cookies", cookies)
+            }
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
         }
 
@@ -101,7 +104,7 @@ class DownloadService : Service() {
         var connection: HttpURLConnection? = null
         try {
             var existing = if (temp.exists()) temp.length() else 0L
-            connection = open(task.url, task.referer, existing)
+            connection = open(task.url, task.referer, task.cookies, existing)
             val response = connection.responseCode
             val append = existing > 0L && response == HttpURLConnection.HTTP_PARTIAL
             if (!append) existing = 0L
@@ -154,11 +157,11 @@ class DownloadService : Service() {
         }
     }
 
-    private fun open(url: String, referer: String, existing: Long): HttpURLConnection {
+    private fun open(url: String, referer: String, cookies: String, existing: Long): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 60000; c.instanceFollowRedirects = true
         c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) UniversalBrowser/0.7")
-        CookieManager.getInstance().getCookie(url)?.takeIf(String::isNotBlank)?.let { c.setRequestProperty("Cookie", it) }
+        if (cookies.isNotBlank()) c.setRequestProperty("Cookie", cookies)
         if (referer.isNotBlank()) c.setRequestProperty("Referer", referer)
         if (existing > 0L) c.setRequestProperty("Range", "bytes=$existing-")
         if (c.responseCode !in 200..299 && c.responseCode != HttpURLConnection.HTTP_PARTIAL) throw IllegalArgumentException("Download server returned HTTP ${c.responseCode}")
