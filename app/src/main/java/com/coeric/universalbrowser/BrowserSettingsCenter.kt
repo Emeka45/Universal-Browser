@@ -79,7 +79,7 @@ object BrowserSettingsCenter {
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Clear") { _, _ ->
                 BrowserDataStore(activity).clearHistory()
-                BrowserSecurityController.clearBrowsingData()
+                BrowserSecurityController.clearBrowsingData((activity.application as UniversalBrowserApp).getRuntime())
                 try { CookieManager.getInstance().flush() } catch (_: Throwable) { }
                 try { WebStorage.getInstance().deleteAllData() } catch (_: Throwable) { }
                 Toast.makeText(activity, "Browsing data cleared", Toast.LENGTH_SHORT).show()
