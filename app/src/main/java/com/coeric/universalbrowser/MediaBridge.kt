@@ -50,10 +50,7 @@ object MediaBridge {
             override fun onActivityDestroyed(activity: Activity) { if (currentActivity === activity) currentActivity = null }
         })
         runtime.webExtensionController.ensureBuiltIn(EXTENSION_URI, EXTENSION_ID).accept(
-            { ext ->
-                extension = ext
-                ext?.setMessageDelegate(delegate, NATIVE_APP)
-            },
+            { ext -> extension = ext; ext?.setMessageDelegate(delegate, NATIVE_APP) },
             { error -> android.util.Log.e("MediaBridge", "Media detector install failed", error) }
         )
     }
@@ -80,7 +77,7 @@ object MediaBridge {
         list.forEach { candidate ->
             val row = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(12, 10, 8, 10); setBackgroundColor(0xFFF7F6FB.toInt()) }
             val label = TextView(activity).apply { text = qualityLabel(candidate); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setPadding(4, 0, 8, 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
-            val download = TextView(activity).apply { text = if (candidate.kind == "stream") "Qualities" else "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8); setOnClickListener { if (candidate.kind == "stream") showStreamQualities(activity, candidate, referer) else startDownload(activity, candidate, referer) } }
+            val download = TextView(activity).apply { text = if (candidate.kind == "stream") "Qualities" else "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8); setOnClickListener { if (candidate.kind == "stream" && candidate.url.substringBefore('?').lowercase(Locale.US).endsWith(".m3u8")) showStreamQualities(activity, candidate, referer) else startDownload(activity, candidate, referer) } }
             row.addView(label); row.addView(download); root.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 6 })
         }
         android.app.AlertDialog.Builder(activity).setTitle("Media detected").setView(root).setNegativeButton("Not now", null).show()
@@ -92,10 +89,7 @@ object MediaBridge {
             onReady = { variants ->
                 activity.runOnUiThread {
                     if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
-                    if (variants.isEmpty()) {
-                        startDownload(activity, candidate, referer)
-                        return@runOnUiThread
-                    }
+                    if (variants.isEmpty()) { startDownload(activity, candidate, referer); return@runOnUiThread }
                     val labels = variants.map { variant ->
                         val resolution = if (variant.height > 0) "${variant.height}p" else if (variant.width > 0) "${variant.width}p" else "Auto"
                         val bandwidth = if (variant.bandwidth > 0) " • ${variant.bandwidth / 1000} kbps" else ""
@@ -103,10 +97,7 @@ object MediaBridge {
                     }.toTypedArray()
                     android.app.AlertDialog.Builder(activity)
                         .setTitle("Choose video quality")
-                        .setItems(labels) { _, which ->
-                            val selected = variants[which]
-                            startStreamDownload(activity, candidate, selected.url, referer, labels[which])
-                        }
+                        .setItems(labels) { _, which -> startStreamDownload(activity, candidate, variants[which].url, referer, labels[which]) }
                         .setNegativeButton("Cancel", null)
                         .show()
                 }
@@ -116,15 +107,26 @@ object MediaBridge {
     }
 
     private fun startStreamDownload(activity: Activity, candidate: MediaCandidate, streamUrl: String, referer: String, quality: String) {
-        val selected = candidate.copy(url = streamUrl)
         Toast.makeText(activity, "Starting $quality download…", Toast.LENGTH_SHORT).show()
-        startDownload(activity, selected, referer)
+        startDownload(activity, candidate.copy(url = streamUrl), referer)
     }
 
     private fun startDownload(activity: Activity, candidate: MediaCandidate, referer: String) {
-        val title = candidate.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "Universal-video" }
+        val baseTitle = candidate.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "Universal-video" }
         val url = candidate.url
-        val stream = url.substringBefore('?').lowercase(Locale.US).endsWith(".m3u8") || url.substringBefore('?').lowercase(Locale.US).endsWith(".mpd")
+        val path = url.substringBefore('?').lowercase(Locale.US)
+        val stream = path.endsWith(".m3u8") || path.endsWith(".mpd")
+        val extension = when {
+            path.endsWith(".mp4") -> ".mp4"
+            path.endsWith(".webm") -> ".webm"
+            path.endsWith(".mov") -> ".mov"
+            path.endsWith(".m4v") -> ".m4v"
+            path.endsWith(".mp3") -> ".mp3"
+            path.endsWith(".m4a") -> ".m4a"
+            path.endsWith(".ogg") || path.endsWith(".oga") -> ".ogg"
+            else -> ".mp4"
+        }
+        val title = if (baseTitle.contains('.')) baseTitle else baseTitle + extension
         try {
             if (stream) {
                 AdvancedMediaDownloadEngine.enqueue(activity, url, title, referer,
