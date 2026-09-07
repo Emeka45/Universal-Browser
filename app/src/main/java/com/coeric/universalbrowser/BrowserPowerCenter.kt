@@ -39,7 +39,7 @@ object BrowserPowerCenter {
                 14 -> showPrivacy(activity, session)
                 15 -> showSitePermissions(activity)
                 16 -> openExtensionInstaller(activity)
-                17 -> showStores(activity)
+                17 -> showStores(activity, sessionProvider)
                 18 -> DownloadCenter.show(activity)
                 19 -> BrowserSettingsCenter.show(activity, reload)
             }
@@ -114,17 +114,17 @@ object BrowserPowerCenter {
             .setNegativeButton("Done", null).show()
     }
 
-    private fun showStores(activity: Activity) {
-        val stores = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
-        val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
-        AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which]))) }.setNegativeButton("Close", null).show()
+    private fun showStores(activity: Activity, sessionProvider: () -> GeckoSession?) {
+        ExtensionStoreCenter.show(activity, sessionProvider) { url ->
+            sessionProvider()?.loadUri(url)
+        }
     }
 
     private fun openExtensionInstaller(activity: Activity) {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/*"
-            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-xpinstall", "application/x-extension", "application/zip", "application/octet-stream"))
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/x-xpinstall", "application/x-extension", "application/x-chrome-extension", "application/zip", "application/octet-stream"))
         }
         activity.startActivityForResult(intent, ExtensionManager.PICK_EXTENSION_REQUEST)
     }
