@@ -133,8 +133,10 @@ class DownloadService : Service() {
             updateNotification(task.title, temp.length(), temp.length(), task.id, true); temp.delete()
         } catch (t: Throwable) {
             val current = store.all().firstOrNull { it.id == task.id }
-            if (current?.state != "paused" && current?.state != "cancelled") store.updateState(task.id, "failed")
+            if (current?.state != "paused" && current?.state != "cancelled") store.update(task.id, state = "failed")
             updateNotification(task.title, current?.bytes ?: 0L, current?.total ?: -1L, task.id, true)
+            // Never leave a partial file behind after a terminal failure; paused downloads retain it.
+            if (current?.state != "paused" && current?.state != "cancelled") temp.delete()
         } finally {
             connection?.disconnect(); worker = null
             val next = store.all().firstOrNull { it.state == "queued" }
@@ -146,12 +148,17 @@ class DownloadService : Service() {
 
     private fun publishFile(temp: File, task: DownloadTaskStore.Task) {
         val name = task.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").trim().ifBlank { "Universal-download" }
-        val displayName = if (name.contains('.')) name else name + ".bin"
+        val displayName = if (name.contains('.')) name else name + extensionForMime(guessMime(task.url))
         if (Build.VERSION.SDK_INT >= 29) {
             val values = android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.DISPLAY_NAME, displayName); put(android.provider.MediaStore.Downloads.MIME_TYPE, guessMime(task.url)); put(android.provider.MediaStore.Downloads.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Universal Browser"); put(android.provider.MediaStore.Downloads.IS_PENDING, 1) }
             val uri = contentResolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("Unable to create Downloads entry")
-            contentResolver.openOutputStream(uri)?.use { out -> temp.inputStream().use { it.copyTo(out, 64 * 1024) } } ?: error("Unable to open Downloads entry")
-            contentResolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null); publishedUri = uri
+            try {
+                contentResolver.openOutputStream(uri)?.use { out -> temp.inputStream().use { it.copyTo(out, 64 * 1024) } } ?: error("Unable to open Downloads entry")
+                contentResolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null); publishedUri = uri
+            } catch (t: Throwable) {
+                contentResolver.delete(uri, null, null)
+                throw t
+            }
         } else {
             val target = File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), displayName); target.parentFile?.mkdirs(); temp.copyTo(target, overwrite = true); publishedUri = Uri.fromFile(target)
         }
@@ -160,7 +167,7 @@ class DownloadService : Service() {
     private fun open(url: String, referer: String, cookies: String, existing: Long): HttpURLConnection {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 60000; c.instanceFollowRedirects = true
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) UniversalBrowser/0.7")
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) UniversalBrowser/1.0")
         if (cookies.isNotBlank()) c.setRequestProperty("Cookie", cookies)
         if (referer.isNotBlank()) c.setRequestProperty("Referer", referer)
         if (existing > 0L) c.setRequestProperty("Range", "bytes=$existing-")
@@ -169,7 +176,19 @@ class DownloadService : Service() {
     }
 
     private fun guessMime(url: String): String = when (url.substringBefore('?').substringAfterLast('.').lowercase()) {
-        "mp4", "m4v" -> "video/mp4"; "webm" -> "video/webm"; "mov" -> "video/quicktime"; "mp3" -> "audio/mpeg"; "m4a" -> "audio/mp4"; "ogg", "oga" -> "audio/ogg"; "pdf" -> "application/pdf"; else -> "application/octet-stream"
+        "mp4", "m4v" -> "video/mp4"; "webm" -> "video/webm"; "mov" -> "video/quicktime"; "3gp" -> "video/3gpp"; "mkv" -> "video/x-matroska"
+        "mp3" -> "audio/mpeg"; "m4a" -> "audio/mp4"; "ogg", "oga" -> "audio/ogg"; "wav" -> "audio/wav"; "flac" -> "audio/flac"
+        "pdf" -> "application/pdf"; "zip" -> "application/zip"; "apk" -> "application/vnd.android.package-archive"; "txt" -> "text/plain"
+        "jpg", "jpeg" -> "image/jpeg"; "png" -> "image/png"; "gif" -> "image/gif"; "webp" -> "image/webp"; "m3u8" -> "application/vnd.apple.mpegurl"
+        else -> "application/octet-stream"
+    }
+
+    private fun extensionForMime(mime: String): String = when (mime) {
+        "video/mp4" -> ".mp4"; "video/webm" -> ".webm"; "video/quicktime" -> ".mov"; "video/3gpp" -> ".3gp"; "video/x-matroska" -> ".mkv"
+        "audio/mpeg" -> ".mp3"; "audio/mp4" -> ".m4a"; "audio/ogg" -> ".ogg"; "audio/wav" -> ".wav"; "audio/flac" -> ".flac"
+        "application/pdf" -> ".pdf"; "application/zip" -> ".zip"; "application/vnd.android.package-archive" -> ".apk"; "text/plain" -> ".txt"
+        "image/jpeg" -> ".jpg"; "image/png" -> ".png"; "image/gif" -> ".gif"; "image/webp" -> ".webp"; "application/vnd.apple.mpegurl" -> ".m3u8"
+        else -> ".bin"
     }
 
     private fun createChannel() { if (Build.VERSION.SDK_INT >= 26) (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(CHANNEL, "Downloads", NotificationManager.IMPORTANCE_LOW)) }
