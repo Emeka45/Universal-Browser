@@ -34,29 +34,26 @@ jobs:
         with:
           gradle-version: '9.7.1'
 
-      - name: Validate committed browser features
+      - name: Validate current browser source tree
         run: |
           set -euo pipefail
-          test -f app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserTabManager.kt
           test -f app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
           test -f app/src/main/java/com/coeric/universalbrowser/BrowserPermissionController.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserExtensionCenter.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/ExtensionCompatibilityEngine.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/ExtensionInstallActivity.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserAdvancedTools.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/DownloadTaskStore.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/DownloadCenter.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/DownloadService.kt
           test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          test -f app/src/main/assets/media-detector/manifest.json
-          test -f app/src/main/assets/media-detector/content.js
-          test -f app/src/main/assets/media-detector/background.js
-          grep -q 'nativeMessagingFromContent' app/src/main/assets/media-detector/manifest.json
-          grep -q 'AdvancedMediaDownloadEngine.isSupported' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'AdvancedMediaDownloadEngine.enqueue' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'BrowserAdvancedTools' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
-          grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
-          grep -q 'BrowserExtensionCenter.openInstaller' app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
-          grep -q '/v1/chat' ai-gateway/src/index.js
+          grep -q 'GeckoView' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'BrowserTabManager' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'BrowserPowerCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'saveAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
+          grep -q 'useTrackingProtection' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
           echo 'Universal Browser source validation passed.'
 
@@ -81,8 +78,6 @@ jobs:
           esac
           file "$apk"
           du -h "$apk"
-
-          # A universal direct-distribution APK must actually contain both ARM ABIs.
           unzip -l "$apk" > apk-contents.txt
           grep -q 'lib/armeabi-v7a/' apk-contents.txt
           grep -q 'lib/arm64-v8a/' apk-contents.txt
