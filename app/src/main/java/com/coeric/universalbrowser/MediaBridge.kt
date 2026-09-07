@@ -1,7 +1,6 @@
 package com.coeric.universalbrowser
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.app.Application
 import android.graphics.Typeface
 import android.view.Gravity
@@ -30,7 +29,8 @@ object MediaBridge {
             val videos = message.optJSONArray("videos") ?: return null
             val pageUrl = message.optString("pageUrl")
             val pageTitle = message.optString("pageTitle").ifBlank { "Universal media" }
-            currentActivity?.runOnUiThread { showMediaChoices(currentActivity!!, pageTitle, pageUrl, videos) }
+            val activity = currentActivity ?: return null
+            activity.runOnUiThread { showMediaChoices(activity, pageTitle, pageUrl, videos) }
             return null
         }
     }
@@ -48,7 +48,7 @@ object MediaBridge {
         runtime.webExtensionController.ensureBuiltIn(EXTENSION_URI, EXTENSION_ID).accept(
             { ext ->
                 extension = ext
-                ext.setMessageDelegate(delegate, NATIVE_APP)
+                ext?.setMessageDelegate(delegate, NATIVE_APP)
             },
             { error -> android.util.Log.e("MediaBridge", "Media detector install failed", error) }
         )
@@ -61,33 +61,19 @@ object MediaBridge {
             val item = videos.optJSONObject(i) ?: continue
             val url = item.optString("url")
             if (url.isBlank() || candidates.containsKey(url)) continue
-            candidates[url] = MediaCandidate(
-                url = url,
-                kind = item.optString("kind", "video"),
-                width = item.optInt("width"),
-                height = item.optInt("height"),
-                title = item.optString("title").ifBlank { title }
-            )
+            candidates[url] = MediaCandidate(url, item.optString("kind", "video"), item.optInt("width"), item.optInt("height"), item.optString("title").ifBlank { title })
         }
         if (candidates.isEmpty()) return
         val list = candidates.values.sortedWith(compareByDescending<MediaCandidate> { it.height }.thenBy { it.url }).take(12)
         val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 4, 8, 8) }
-        root.addView(TextView(activity).apply {
-            text = "Media found on this page. Choose a source to download."; textSize = 13f; setPadding(12, 8, 12, 12)
-        })
+        root.addView(TextView(activity).apply { text = "Media found on this page. Choose a source to download."; textSize = 13f; setPadding(12, 8, 12, 12) })
         list.forEach { candidate ->
             val row = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(12, 10, 8, 10); setBackgroundColor(0xFFF7F6FB.toInt()) }
-            val label = TextView(activity).apply {
-                text = qualityLabel(candidate); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setPadding(4, 0, 8, 0)
-                layoutParams = LinearLayout.LayoutParams(0, -2, 1f)
-            }
-            val download = TextView(activity).apply {
-                text = "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8)
-                setOnClickListener { startDownload(activity, candidate, referer) }
-            }
+            val label = TextView(activity).apply { text = qualityLabel(candidate); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setPadding(4, 0, 8, 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
+            val download = TextView(activity).apply { text = "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8); setOnClickListener { startDownload(activity, candidate, referer) } }
             row.addView(label); row.addView(download); root.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 6 })
         }
-        AlertDialog.Builder(activity).setTitle("Video detected").setView(root).setNegativeButton("Not now", null).show()
+        android.app.AlertDialog.Builder(activity).setTitle("Video detected").setView(root).setNegativeButton("Not now", null).show()
     }
 
     private fun startDownload(activity: Activity, candidate: MediaCandidate, referer: String) {
@@ -103,8 +89,7 @@ object MediaBridge {
                 )
             } else {
                 val id = "media-${System.currentTimeMillis()}"
-                val store = DownloadTaskStore(activity)
-                store.upsert(DownloadTaskStore.Task(id, url, title, "queued", 0L, -1L, System.currentTimeMillis(), referer))
+                DownloadTaskStore(activity).upsert(DownloadTaskStore.Task(id, url, title, "queued", 0L, -1L, System.currentTimeMillis(), referer))
                 DownloadService.start(activity, id, url, title, referer)
                 toast(activity, "Download started")
             }
