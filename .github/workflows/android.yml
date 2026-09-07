@@ -54,7 +54,10 @@ jobs:
           grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'saveAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
           grep -q 'useTrackingProtection' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
+          if git grep -n 'fingerprintingProtection(' -- 'app/src/main/**/*.kt' '*.kts' >/dev/null 2>&1; then
+            echo 'Forbidden fingerprintingProtection API reference found in source.'
+            exit 1
+          fi
           echo 'Universal Browser source validation passed.'
 
       - name: Check formatting
