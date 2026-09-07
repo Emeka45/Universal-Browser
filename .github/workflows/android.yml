@@ -52,7 +52,7 @@ jobs:
           grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserPowerCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'saveAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
+          grep -q 'savePageAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
           grep -q 'useTrackingProtection' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
           echo 'Universal Browser source validation passed.'
