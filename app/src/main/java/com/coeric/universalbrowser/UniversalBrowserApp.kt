@@ -47,7 +47,7 @@ class UniversalBrowserApp : Application() {
             .globalPrivacyControlEnabled(true)
             .contentBlocking(
                 ContentBlocking.Settings.Builder()
-                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT | ContentBlocking.AntiTracking.STP)
+                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT or ContentBlocking.AntiTracking.STP)
                     .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
                     .cookieBehavior(cookieBehavior)
                     .cookieBehaviorPrivateMode(cookieBehavior)
