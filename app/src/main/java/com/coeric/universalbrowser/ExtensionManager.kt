@@ -85,24 +85,32 @@ object ExtensionManager {
     private fun copyAndNormalizePackage(context: Context, uri: Uri): File? {
         return try {
             val extensionDir = File(context.filesDir, "extensions").apply { mkdirs() }
-            val input = context.contentResolver.openInputStream(uri) ?: return null
             val raw = File(extensionDir, "import-${System.currentTimeMillis()}.pkg")
-            FileOutputStream(raw).use { output -> input.use { it.copyTo(output) } }
+            context.contentResolver.openInputStream(uri)?.use { input -> FileOutputStream(raw).use { input.copyTo(it) } } ?: return null
+
             val normalized = File(extensionDir, "import-${System.currentTimeMillis()}.xpi")
             FileInputStream(raw).use { source ->
                 val header = ByteArray(16)
                 val count = source.read(header)
-                if (count >= 12 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x43, 0x72, 0x32, 0x34))) {
+                val isCrx = count >= 8 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x43, 0x72, 0x32, 0x34))
+                if (isCrx) {
                     val version = littleEndianInt(header, 4)
-                    if (version != 2) return null
-                    val publicKeyLength = littleEndianInt(header, 8)
-                    val signatureLength = littleEndianInt(header, 12)
-                    source.skip((publicKeyLength + signatureLength).toLong())
-                    FileOutputStream(normalized).use { source.copyTo(it) }
-                } else if (count >= 12 && header.copyOfRange(0, 4).contentEquals(byteArrayOf(0x43, 0x72, 0x32, 0x33))) {
-                    val headerSize = littleEndianInt(header, 8)
-                    source.skip(headerSize.toLong())
-                    FileOutputStream(normalized).use { source.copyTo(it) }
+                    when (version) {
+                        2 -> {
+                            if (count < 16) return null
+                            val publicKeyLength = littleEndianInt(header, 8)
+                            val signatureLength = littleEndianInt(header, 12)
+                            source.skip((publicKeyLength + signatureLength).toLong())
+                            FileOutputStream(normalized).use { source.copyTo(it) }
+                        }
+                        3 -> {
+                            if (count < 12) return null
+                            val headerSize = littleEndianInt(header, 8)
+                            source.skip(headerSize.toLong())
+                            FileOutputStream(normalized).use { source.copyTo(it) }
+                        }
+                        else -> return null
+                    }
                 } else {
                     FileInputStream(raw).use { sourceAgain -> FileOutputStream(normalized).use { sourceAgain.copyTo(it) } }
                 }
