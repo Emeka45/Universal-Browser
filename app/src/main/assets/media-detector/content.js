@@ -6,7 +6,7 @@
     const media = /\.(mp4|webm|mov|m4v|3gp|mkv|mp3|m4a|ogg|oga|m3u8|mpd)(?:[?#]|$)/i.test(lower) || /\.m3u8|\.mpd|video\//i.test(lower);
     if (!media) return;
     sent.add(url);
-    browser.runtime.sendNativeMessage("browser", {type:"media-playable", url, title: title || document.title || "Media", kind});
+    browser.runtime.sendMessage({type:"media-candidate", url, title: title || document.title || "Media", kind});
   };
   const inspect = () => {
     document.querySelectorAll("video,audio,source,track").forEach(el => {
