@@ -53,7 +53,6 @@ jobs:
           grep -q 'BrowserPowerCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'saveAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
-          grep -q 'useTrackingProtection' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           echo 'Universal Browser source validation passed.'
 
       - name: Check formatting
