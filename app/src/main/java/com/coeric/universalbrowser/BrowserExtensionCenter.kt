@@ -48,7 +48,7 @@ object BrowserExtensionCenter {
             items += "— Installed extensions —"
             extensions.forEach { ext ->
                 val name = ext.metaData?.name?.takeIf { it.isNotBlank() } ?: ext.id
-                val state = if (ext.isEnabled) "Enabled" else "Disabled"
+                val state = if (ext.metaData?.enabled == true) "Enabled" else "Disabled"
                 items += "$name · $state"
             }
         }
@@ -128,14 +128,15 @@ object BrowserExtensionCenter {
 
     private fun extensionActions(host: Activity, controller: WebExtensionController, extension: WebExtension) {
         val name = extension.metaData?.name?.takeIf { it.isNotBlank() } ?: extension.id
-        val actions = if (extension.isEnabled) arrayOf("Disable", "Uninstall") else arrayOf("Enable", "Uninstall")
+        val enabled = extension.metaData?.enabled == true
+        val actions = if (enabled) arrayOf("Disable", "Uninstall") else arrayOf("Enable", "Uninstall")
         AlertDialog.Builder(host)
             .setTitle(name)
             .setItems(actions) { _, which ->
                 if (which == 0) {
-                    val result = if (extension.isEnabled) controller.disable(extension, WebExtensionController.EnableSource.USER)
+                    val result = if (enabled) controller.disable(extension, WebExtensionController.EnableSource.USER)
                     else controller.enable(extension, WebExtensionController.EnableSource.USER)
-                    result.accept({ toast(host, if (extension.isEnabled) "Extension disabled" else "Extension enabled") }, { e -> toast(host, "Could not change extension: ${e?.message ?: "unknown error"}") })
+                    result.accept({ toast(host, if (enabled) "Extension disabled" else "Extension enabled") }, { e -> toast(host, "Could not change extension: ${e?.message ?: "unknown error"}") })
                 } else {
                     AlertDialog.Builder(host)
                         .setTitle("Uninstall $name?")
