@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import com.google.android.gms.ads.MobileAds
+import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
 
@@ -27,8 +28,15 @@ class UniversalBrowserApp : Application() {
     @Synchronized
     fun getRuntime(): GeckoRuntime {
         runtimeInstance?.let { return it }
-        val prefs = getSharedPreferences("universal_browser_power", MODE_PRIVATE)
-        val textScale = prefs.getFloat("text_scale", 1.0f).coerceIn(0.8f, 2.0f)
+        val powerPrefs = getSharedPreferences("universal_browser_power", MODE_PRIVATE)
+        val securityPrefs = getSharedPreferences("universal_security", MODE_PRIVATE)
+        val textScale = powerPrefs.getFloat("text_scale", 1.0f).coerceIn(0.8f, 2.0f)
+        val blockThirdParty = securityPrefs.getBoolean("block_third_party_cookies", false)
+        val cookieBehavior = if (blockThirdParty) {
+            ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS
+        } else {
+            ContentBlocking.CookieBehavior.ACCEPT_ALL
+        }
         val settings = GeckoRuntimeSettings.Builder()
             .extensionsWebAPIEnabled(true)
             .forceUserScalableEnabled(true)
@@ -36,11 +44,18 @@ class UniversalBrowserApp : Application() {
             .automaticFontSizeAdjustment(false)
             .fontSizeFactor(textScale)
             .fontInflation(true)
+            .globalPrivacyControlEnabled(true)
+            .contentBlocking(
+                ContentBlocking.Settings.Builder()
+                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT | ContentBlocking.AntiTracking.STP)
+                    .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
+                    .cookieBehavior(cookieBehavior)
+                    .cookieBehaviorPrivateMode(cookieBehavior)
+                    .build()
+            )
             .build()
         return GeckoRuntime.create(this, settings).also {
             runtimeInstance = it
-            // GeckoView 150+ supports explicit warm-up. Starting the content process
-            // before the first navigation reduces first-page latency on low-end devices.
             it.warmUp()
         }
     }
