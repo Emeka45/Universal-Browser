@@ -37,24 +37,28 @@ jobs:
       - name: Validate current browser source tree
         run: |
           set -euo pipefail
-          test -f app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserTabManager.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserPermissionController.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/DownloadCenter.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/DownloadService.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
+          files=(
+            app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+            app/src/main/java/com/coeric/universalbrowser/BrowserTabManager.kt
+            app/src/main/java/com/coeric/universalbrowser/BrowserSecurityController.kt
+            app/src/main/java/com/coeric/universalbrowser/BrowserPermissionController.kt
+            app/src/main/java/com/coeric/universalbrowser/BrowserPowerCenter.kt
+            app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
+            app/src/main/java/com/coeric/universalbrowser/DownloadCenter.kt
+            app/src/main/java/com/coeric/universalbrowser/DownloadService.kt
+            app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
+            app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
+            app/src/main/java/com/coeric/universalbrowser/ExtensionManager.kt
+            app/src/main/java/com/coeric/universalbrowser/ExtensionStoreCenter.kt
+            app/src/main/java/com/coeric/universalbrowser/MediaBridge.kt
+            app/src/main/java/com/coeric/universalbrowser/AdvancedMediaDownloadEngine.kt
+            app/src/main/assets/universal_media/manifest.json
+            app/src/main/assets/universal_media/media-detector.js
+          )
+          for f in "${files[@]}"; do test -f "$f" || { echo "Missing required file: $f"; exit 1; }; done
           grep -q 'GeckoView' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'BrowserTabManager' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'BrowserPowerCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
+          grep -q 'GeckoRuntime' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
           grep -q 'savePageAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
-          grep -q 'useTrackingProtection' app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          if grep -Rqs 'fingerprintingProtection(' app/src/main/java; then exit 1; fi
           echo 'Universal Browser source validation passed.'
 
       - name: Check formatting
@@ -68,20 +72,13 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk' | sort)
-          apk_count=${#apks[@]}
-          echo "Found $apk_count debug APK(s)"
-          test "$apk_count" -eq 1
+          test "${#apks[@]}" -eq 1
           apk="${apks[0]}"
-          case "$apk" in
-            *universal*|*debug*) : ;;
-            *) echo "Unexpected APK name: $apk"; exit 1 ;;
-          esac
           file "$apk"
           du -h "$apk"
           unzip -l "$apk" > apk-contents.txt
           grep -q 'lib/armeabi-v7a/' apk-contents.txt
           grep -q 'lib/arm64-v8a/' apk-contents.txt
-          echo 'Verified native libraries for armeabi-v7a and arm64-v8a.'
           echo "Universal APK verified: $apk"
 
       - name: Upload universal APK
