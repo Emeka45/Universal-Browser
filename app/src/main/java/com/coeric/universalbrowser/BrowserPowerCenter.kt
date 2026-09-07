@@ -82,7 +82,11 @@ object BrowserPowerCenter {
 
     private fun share(activity: Activity, url: String) {
         if (url.isBlank()) return
-        activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser") }, "Share page"))
+        try {
+            activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser") }, "Share page"))
+        } catch (_: Throwable) {
+            Toast.makeText(activity, "No app available to share this page", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun bookmark(activity: Activity, url: String) {
@@ -117,6 +121,12 @@ object BrowserPowerCenter {
     private fun showStores(activity: Activity) {
         val stores = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
         val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
-        AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which -> activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which]))) }.setNegativeButton("Close", null).show()
+        AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which ->
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which])))
+            } catch (_: Throwable) {
+                Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show()
+            }
+        }.setNegativeButton("Close", null).show()
     }
 }
