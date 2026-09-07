@@ -15,6 +15,7 @@
         android:enableOnBackInvokedCallback="true">
         <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="@string/admob_app_id" />
         <activity android:name=".QrScannerActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".BrowserExtensionFilePickerActivity" android:exported="false" android:screenOrientation="unspecified" />
         <service
             android:name=".DownloadService"
             android:exported="false"
