@@ -22,6 +22,7 @@ object BrowserPermissionController {
     private var pendingAndroidCallback: GeckoSession.PermissionDelegate.Callback? = null
     private var pendingActivity: Activity? = null
     private var pendingPermissions: Array<String> = emptyArray()
+    private var pendingRequestCode: Int? = null
     private var pollCount = 0
 
     fun attach(activity: Activity, session: GeckoSession) {
@@ -34,6 +35,7 @@ object BrowserPermissionController {
                 pendingAndroidCallback = callback
                 pendingActivity = activity
                 pendingPermissions = missing.toTypedArray()
+                pendingRequestCode = REQUEST
                 pollCount = 0
                 ActivityCompat.requestPermissions(activity, pendingPermissions, REQUEST)
                 Toast.makeText(activity, "Permission requested by the current site", Toast.LENGTH_SHORT).show()
@@ -69,17 +71,44 @@ object BrowserPermissionController {
         val activity = pendingActivity ?: run { callback.reject(); clearPendingAndroidRequest(); return }
         val resolved = pendingPermissions.all { ActivityCompat.checkSelfPermission(activity, it) == PackageManager.PERMISSION_GRANTED }
         val denied = pendingPermissions.any { ActivityCompat.checkSelfPermission(activity, it) == PackageManager.PERMISSION_DENIED }
-        if (resolved) { pendingAndroidCallback = null; pendingActivity = null; pendingPermissions = emptyArray(); callback.grant(); return }
+        if (resolved) {
+            finishPendingAndroidRequest(callback, grant = true)
+            return
+        }
         pollCount++
-        if (denied && pollCount >= 2 || pollCount >= MAX_POLLS || activity.isFinishing || activity.isDestroyed) {
-            pendingAndroidCallback = null; pendingActivity = null; pendingPermissions = emptyArray(); callback.reject(); return
+        if ((denied && pollCount >= 2) || pollCount >= MAX_POLLS || activity.isFinishing || activity.isDestroyed) {
+            finishPendingAndroidRequest(callback, grant = false)
+            return
         }
         handler.postDelayed(::pollPermissionResult, POLL_MS)
     }
 
+    /** Completes the Gecko permission callback after Android's runtime permission dialog resolves. */
+    fun onAndroidPermissionResult(requestCode: Int, grantResults: IntArray) {
+        if (requestCode != (pendingRequestCode ?: return)) return
+        val callback = pendingAndroidCallback ?: return
+        val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        finishPendingAndroidRequest(callback, granted)
+    }
+
+    private fun finishPendingAndroidRequest(callback: GeckoSession.PermissionDelegate.Callback, grant: Boolean) {
+        handler.removeCallbacks(::pollPermissionResult)
+        pendingAndroidCallback = null
+        pendingActivity = null
+        pendingPermissions = emptyArray()
+        pendingRequestCode = null
+        pollCount = 0
+        if (grant) callback.grant() else callback.reject()
+    }
+
     fun clearPendingAndroidRequest() {
         handler.removeCallbacks(::pollPermissionResult)
-        pendingAndroidCallback?.reject(); pendingAndroidCallback = null; pendingActivity = null; pendingPermissions = emptyArray()
+        pendingAndroidCallback?.reject()
+        pendingAndroidCallback = null
+        pendingActivity = null
+        pendingPermissions = emptyArray()
+        pendingRequestCode = null
+        pollCount = 0
     }
 
     fun clearSiteDecisions(activity: Activity) = activity.getSharedPreferences(PREFS, 0).edit().clear().apply()
