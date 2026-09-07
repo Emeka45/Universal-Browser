@@ -1,1 +1,0 @@
-Remove AI, broken extension infrastructure, extension media detector, and web-store automation. Keep core Gecko browsing, tabs, downloads, permissions, security, browser tools, QR and monetization.

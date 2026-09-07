@@ -32,31 +32,21 @@ class UniversalBrowserApp : Application() {
         val securityPrefs = getSharedPreferences("universal_security", MODE_PRIVATE)
         val textScale = powerPrefs.getFloat("text_scale", 1.0f).coerceIn(0.8f, 2.0f)
         val blockThirdParty = securityPrefs.getBoolean("block_third_party_cookies", false)
-        val cookieBehavior = if (blockThirdParty) {
-            ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS
-        } else {
-            ContentBlocking.CookieBehavior.ACCEPT_ALL
-        }
+        val cookieBehavior = if (blockThirdParty) ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS else ContentBlocking.CookieBehavior.ACCEPT_ALL
         val settings = GeckoRuntimeSettings.Builder()
-            .extensionsWebAPIEnabled(true)
             .forceUserScalableEnabled(true)
             .doubleTapZoomingEnabled(true)
             .automaticFontSizeAdjustment(false)
             .fontSizeFactor(textScale)
             .fontInflation(true)
             .globalPrivacyControlEnabled(true)
-            .contentBlocking(
-                ContentBlocking.Settings.Builder()
-                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT or ContentBlocking.AntiTracking.STP)
-                    .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
-                    .cookieBehavior(cookieBehavior)
-                    .cookieBehaviorPrivateMode(cookieBehavior)
-                    .build()
-            )
+            .contentBlocking(ContentBlocking.Settings.Builder()
+                .antiTracking(ContentBlocking.AntiTracking.DEFAULT or ContentBlocking.AntiTracking.STP)
+                .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
+                .cookieBehavior(cookieBehavior)
+                .cookieBehaviorPrivateMode(cookieBehavior)
+                .build())
             .build()
-        return GeckoRuntime.create(this, settings).also {
-            runtimeInstance = it
-            it.warmUp()
-        }
+        return GeckoRuntime.create(this, settings).also { runtimeInstance = it; it.warmUp() }
     }
 }
