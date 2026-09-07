@@ -58,7 +58,7 @@ object BrowserExtensionCenter {
             .setItems(items.toTypedArray()) { _, which ->
                 when {
                     which == 0 -> promptUrl(host, controller)
-                    which == 1 -> chooseXpiFile(host, controller)
+                    which == 1 -> chooseXpiFile(host)
                     which in 2..5 -> openStore(host, which - 2)
                     extensions.isNotEmpty() && which == 6 -> Unit
                     extensions.isNotEmpty() && which > 6 -> extensionActions(host, controller, extensions[which - 7])
@@ -89,28 +89,12 @@ object BrowserExtensionCenter {
             .show()
     }
 
-    private fun chooseXpiFile(host: Activity, controller: WebExtensionController) {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/x-xpinstall"
-        }
+    private fun chooseXpiFile(host: Activity) {
         try {
-            host.startActivityForResult(intent, REQUEST_XPI)
+            host.startActivity(Intent(host, BrowserExtensionFilePickerActivity::class.java))
         } catch (_: Throwable) {
-            toast(host, "No file picker is available")
+            toast(host, "No XPI file picker is available")
         }
-    }
-
-    fun onActivityResult(host: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode != REQUEST_XPI || resultCode != Activity.RESULT_OK) return
-        val uri = data?.data ?: return
-        try {
-            host.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } catch (_: Throwable) {
-            // Some providers do not offer persistable permissions; the immediate read grant is enough.
-        }
-        val controller = (host.application as UniversalBrowserApp).getRuntime().webExtensionController
-        install(host, controller, uri.toString(), WebExtensionController.INSTALLATION_METHOD_FROM_FILE)
     }
 
     private fun install(host: Activity, controller: WebExtensionController, uri: String, method: String) {
@@ -192,6 +176,4 @@ object BrowserExtensionCenter {
     private fun toast(host: Activity, message: String) {
         host.runOnUiThread { Toast.makeText(host, message, Toast.LENGTH_LONG).show() }
     }
-
-    private const val REQUEST_XPI = 4207
 }
