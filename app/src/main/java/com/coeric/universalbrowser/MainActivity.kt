@@ -2,6 +2,7 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -59,6 +60,14 @@ class MainActivity : Activity() {
         restoreTabs()
     }
 
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ExtensionManager.PICK_EXTENSION_REQUEST && resultCode == RESULT_OK) {
+            data?.data?.let { ExtensionManager.installFromUri(this, it) }
+        }
+    }
+
     @Suppress("DEPRECATION") override fun onBackPressed() {
         when { canGoBack -> activeSession()?.goBack(); homePanel.visibility == View.VISIBLE -> super.onBackPressed(); else -> showHome() }
     }
@@ -101,8 +110,13 @@ class MainActivity : Activity() {
         content.addView(featureCard("Private tab", "Isolated private browsing", "◈") { newTab(true) }, featureParams())
         content.addView(featureCard("Tabs", "Switch, close and restore tabs", "▣") { showTabs() }, featureParams())
         content.addView(featureCard("Downloads", "Manage browser downloads", "↓") { DownloadCenter.show(this) }, featureParams())
+        content.addView(featureCard("Extensions & stores", "Chrome, Edge, Opera and Firefox add-ons", "🧩") { showExtensionCenter() }, featureParams())
         content.addView(featureCard("Browser tools", "Desktop site, zoom, reader, translation, PDF and privacy", "⚙") { BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() }) }, featureParams())
         scroll.addView(content); return scroll
+    }
+
+    private fun showExtensionCenter() {
+        ExtensionStoreCenter.show(this, { activeSession() }) { url -> activeSession()?.loadUri(url) }
     }
 
     private fun attachTab(tab: BrowserTabManager.Tab) {
@@ -164,14 +178,15 @@ class MainActivity : Activity() {
     }
 
     private fun showBrowserMenu() {
-        val items = arrayOf("New tab", "Private tab", "Tabs", "Downloads", "Browser tools", "Save page as PDF", "Screenshot page", "Site controls", "Close tab")
+        val items = arrayOf("New tab", "Private tab", "Tabs", "Downloads", "Extensions & stores", "Browser tools", "Save page as PDF", "Screenshot page", "Site controls", "Close tab")
         AlertDialog.Builder(this).setTitle("Universal Browser").setItems(items) { _, which -> when (which) {
             0 -> newTab(false); 1 -> newTab(true); 2 -> showTabs(); 3 -> DownloadCenter.show(this)
-            4 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() })
-            5 -> activeSession()?.let { BrowserFeatureCenter.savePageAsPdf(this, it) }
-            6 -> activeSession()?.let { BrowserFeatureCenter.captureVisiblePage(this, it) }
-            7 -> activeSession()?.let { BrowserFeatureCenter.showSiteControls(this, it, currentUrl) }
-            8 -> tabManager.activeIndex().takeIf { it >= 0 }?.let { closeTab(it) }
+            4 -> showExtensionCenter()
+            5 -> BrowserPowerCenter.show(this, { activeSession() }, { currentUrl }, { activeSession()?.reload() })
+            6 -> activeSession()?.let { BrowserFeatureCenter.savePageAsPdf(this, it) }
+            7 -> activeSession()?.let { BrowserFeatureCenter.captureVisiblePage(this, it) }
+            8 -> activeSession()?.let { BrowserFeatureCenter.showSiteControls(this, it, currentUrl) }
+            9 -> tabManager.activeIndex().takeIf { it >= 0 }?.let { closeTab(it) }
         } }.show()
     }
 

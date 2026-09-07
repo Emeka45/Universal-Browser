@@ -19,7 +19,7 @@ object BrowserPowerCenter {
     fun show(activity: Activity, sessionProvider: () -> GeckoSession?, currentUrlProvider: () -> String, reload: () -> Unit) {
         val session = sessionProvider()
         if (session == null) { Toast.makeText(activity, "Open a page first", Toast.LENGTH_SHORT).show(); return }
-        val items = arrayOf("Desktop site", "Page zoom", "Reader mode", "Translate page", "Find in page", "Share page", "Save offline page", "Save page as PDF", "Screenshot page", "Print page", "Bookmark page", "Scan QR code", "Generate QR code", "Site controls", "Privacy & protection", "Site permissions", "Install extension", "Web stores", "Downloads", "Settings")
+        val items = arrayOf("Desktop site", "Page zoom", "Reader mode", "Translate page", "Find in page", "Share page", "Save offline page", "Save page as PDF", "Screenshot page", "Print page", "Bookmark page", "Scan QR code", "Generate QR code", "Site controls", "Privacy & protection", "Site permissions", "Extensions & stores", "Downloads", "Settings")
         AlertDialog.Builder(activity).setTitle("Universal tools").setItems(items) { _, which ->
             when (which) {
                 0 -> toggleDesktop(activity, session, reload)
@@ -38,10 +38,9 @@ object BrowserPowerCenter {
                 13 -> BrowserFeatureCenter.showSiteControls(activity, session, currentUrlProvider())
                 14 -> showPrivacy(activity, session)
                 15 -> showSitePermissions(activity)
-                16 -> BrowserExtensionCenter.openInstaller(activity)
-                17 -> showStores(activity)
-                18 -> DownloadCenter.show(activity)
-                19 -> BrowserSettingsCenter.show(activity, reload)
+                16 -> ExtensionStoreCenter.show(activity, sessionProvider) { url -> sessionProvider()?.loadUri(url) }
+                17 -> DownloadCenter.show(activity)
+                18 -> BrowserSettingsCenter.show(activity, reload)
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -113,14 +112,5 @@ object BrowserPowerCenter {
             .setMessage("Universal Browser asks before sensitive site access such as location, notifications and camera/microphone. Decisions are remembered per site for normal tabs. Private tabs do not persist permission decisions.")
             .setPositiveButton("Clear remembered decisions") { _, _ -> BrowserPermissionController.clearSiteDecisions(activity); Toast.makeText(activity, "Site permission decisions cleared", Toast.LENGTH_SHORT).show() }
             .setNegativeButton("Done", null).show()
-    }
-
-    private fun showStores(activity: Activity) {
-        val stores = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
-        val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
-        AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which ->
-            try { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which]))) }
-            catch (_: Throwable) { Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show() }
-        }.setNegativeButton("Close", null).show()
     }
 }

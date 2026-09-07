@@ -23,6 +23,7 @@ class UniversalBrowserApp : Application() {
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
             override fun onActivityDestroyed(activity: Activity) = Unit
         })
+        MediaBridge.initialize(this, getRuntime())
     }
 
     @Synchronized
