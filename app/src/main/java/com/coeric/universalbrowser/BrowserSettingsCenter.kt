@@ -49,7 +49,7 @@ object BrowserSettingsCenter {
                 3 -> clearData(activity)
                 4 -> DownloadCenter.show(activity)
                 5 -> showStores(activity)
-                6 -> AlertDialog.Builder(activity).setTitle("Universal Browser").setMessage("GeckoView-based • Android Go friendly • privacy controls • WebExtensions • native AI gateway").setPositiveButton("OK", null).show()
+                6 -> AlertDialog.Builder(activity).setTitle("Universal Browser").setMessage("GeckoView-based • Android Go friendly • privacy controls • WebExtensions • no bundled AI model").setPositiveButton("OK", null).show()
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -95,7 +95,11 @@ object BrowserSettingsCenter {
             "https://addons.opera.com/"
         )
         AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(names) { _, which ->
-            activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which])))
+            try {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which])))
+            } catch (_: Throwable) {
+                Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show()
+            }
         }.setNegativeButton("Close", null).show()
     }
 }
