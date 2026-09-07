@@ -19,9 +19,13 @@ object MediaBridge {
     private const val EXTENSION_URI = "resource://android/assets/universal_media/"
     private const val EXTENSION_ID = "media-detector@universalbrowser"
     private const val NATIVE_APP = "browser"
+    private const val DIALOG_DEBOUNCE_MS = 12_000L
 
     private var currentActivity: Activity? = null
     private var extension: WebExtension? = null
+    private var lastDialogKey = ""
+    private var lastDialogAt = 0L
+
     private val delegate = object : WebExtension.MessageDelegate {
         override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
             if (nativeApp != NATIVE_APP || message !is JSONObject) return null
@@ -64,16 +68,57 @@ object MediaBridge {
             candidates[url] = MediaCandidate(url, item.optString("kind", "video"), item.optInt("width"), item.optInt("height"), item.optString("title").ifBlank { title })
         }
         if (candidates.isEmpty()) return
+        val key = candidates.keys.sorted().joinToString("|")
+        val now = System.currentTimeMillis()
+        if (key == lastDialogKey && now - lastDialogAt < DIALOG_DEBOUNCE_MS) return
+        lastDialogKey = key
+        lastDialogAt = now
+
         val list = candidates.values.sortedWith(compareByDescending<MediaCandidate> { it.height }.thenBy { it.url }).take(12)
         val root = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 4, 8, 8) }
-        root.addView(TextView(activity).apply { text = "Media found on this page. Choose a source to download."; textSize = 13f; setPadding(12, 8, 12, 12) })
+        root.addView(TextView(activity).apply { text = "Media found on this page. Select a source or stream quality."; textSize = 13f; setPadding(12, 8, 12, 12) })
         list.forEach { candidate ->
             val row = LinearLayout(activity).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(12, 10, 8, 10); setBackgroundColor(0xFFF7F6FB.toInt()) }
             val label = TextView(activity).apply { text = qualityLabel(candidate); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; setPadding(4, 0, 8, 0); layoutParams = LinearLayout.LayoutParams(0, -2, 1f) }
-            val download = TextView(activity).apply { text = "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8); setOnClickListener { startDownload(activity, candidate, referer) } }
+            val download = TextView(activity).apply { text = if (candidate.kind == "stream") "Qualities" else "Download"; textSize = 13f; setTextColor(0xFF6548FF.toInt()); setPadding(14, 8, 14, 8); setOnClickListener { if (candidate.kind == "stream") showStreamQualities(activity, candidate, referer) else startDownload(activity, candidate, referer) } }
             row.addView(label); row.addView(download); root.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 6 })
         }
-        android.app.AlertDialog.Builder(activity).setTitle("Video detected").setView(root).setNegativeButton("Not now", null).show()
+        android.app.AlertDialog.Builder(activity).setTitle("Media detected").setView(root).setNegativeButton("Not now", null).show()
+    }
+
+    private fun showStreamQualities(activity: Activity, candidate: MediaCandidate, referer: String) {
+        Toast.makeText(activity, "Reading available video qualities…", Toast.LENGTH_SHORT).show()
+        AdvancedMediaDownloadEngine.inspectHlsVariants(candidate.url, referer,
+            onReady = { variants ->
+                activity.runOnUiThread {
+                    if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+                    if (variants.isEmpty()) {
+                        startDownload(activity, candidate, referer)
+                        return@runOnUiThread
+                    }
+                    val labels = variants.map { variant ->
+                        val resolution = if (variant.height > 0) "${variant.height}p" else if (variant.width > 0) "${variant.width}p" else "Auto"
+                        val bandwidth = if (variant.bandwidth > 0) " • ${variant.bandwidth / 1000} kbps" else ""
+                        "$resolution$bandwidth"
+                    }.toTypedArray()
+                    android.app.AlertDialog.Builder(activity)
+                        .setTitle("Choose video quality")
+                        .setItems(labels) { _, which ->
+                            val selected = variants[which]
+                            startStreamDownload(activity, candidate, selected.url, referer, labels[which])
+                        }
+                        .setNegativeButton("Cancel", null)
+                        .show()
+                }
+            },
+            onError = { error -> activity.runOnUiThread { Toast.makeText(activity, "Quality detection failed: $error", Toast.LENGTH_SHORT).show() } }
+        )
+    }
+
+    private fun startStreamDownload(activity: Activity, candidate: MediaCandidate, streamUrl: String, referer: String, quality: String) {
+        val selected = candidate.copy(url = streamUrl)
+        Toast.makeText(activity, "Starting $quality download…", Toast.LENGTH_SHORT).show()
+        startDownload(activity, selected, referer)
     }
 
     private fun startDownload(activity: Activity, candidate: MediaCandidate, referer: String) {
@@ -83,9 +128,9 @@ object MediaBridge {
         try {
             if (stream) {
                 AdvancedMediaDownloadEngine.enqueue(activity, url, title, referer,
-                    onStarted = { toast(activity, "Media download started") },
-                    onFinished = { result -> toast(activity, "Saved ${result.fileName}") },
-                    onError = { error -> toast(activity, "Download failed: $error") }
+                    onStarted = { activity.runOnUiThread { toast(activity, "Media download started") } },
+                    onFinished = { result -> activity.runOnUiThread { toast(activity, "Saved ${result.fileName}") } },
+                    onError = { error -> activity.runOnUiThread { toast(activity, "Download failed: $error") } }
                 )
             } else {
                 val id = "media-${System.currentTimeMillis()}"
