@@ -20,14 +20,30 @@ import kotlin.math.min
 /** Direct and non-DRM HLS/DASH downloader. Streaming resources are discovered by the media WebExtension. */
 object AdvancedMediaDownloadEngine {
     data class Result(val fileName: String, val bytes: Long, val kind: String)
+    data class StreamVariant(val url: String, val bandwidth: Long, val width: Int, val height: Int, val codecs: String)
     private data class Output(val uri: Uri?, val file: File?, val stream: java.io.OutputStream)
-    private data class Variant(val url: String, val bandwidth: Long, val codecs: String = "")
+    private data class Variant(val url: String, val bandwidth: Long, val codecs: String = "", val width: Int = 0, val height: Int = 0)
     private data class Segment(val url: String, val rangeStart: Long? = null, val rangeLength: Long? = null)
 
     fun isSupported(url: String): Boolean {
         if (url.isBlank() || url.startsWith("data:", true) || url.startsWith("blob:", true)) return false
         val path = url.substringBefore('?').lowercase(Locale.US)
         return listOf(".mp4", ".webm", ".mov", ".m4v", ".3gp", ".mkv", ".mp3", ".m4a", ".ogg", ".oga", ".m3u8", ".mpd").any(path::endsWith)
+    }
+
+    fun inspectHlsVariants(url: String, referer: String, cookies: String = "", onReady: (List<StreamVariant>) -> Unit, onError: (String) -> Unit) {
+        Thread {
+            try {
+                val playlist = fetchText(url, referer, cookies)
+                if (!playlist.contains("#EXT-X-STREAM-INF", true)) {
+                    onReady(emptyList())
+                    return@Thread
+                }
+                onReady(parseMasterVariants(url, playlist).map { StreamVariant(it.url, it.bandwidth, it.width, it.height, it.codecs) }.sortedWith(compareByDescending<StreamVariant> { it.height }.thenByDescending { it.bandwidth }))
+            } catch (t: Throwable) {
+                onError(t.message ?: "Could not inspect HLS qualities")
+            }
+        }.start()
     }
 
     fun enqueue(context: Context, url: String, title: String, referer: String, cookies: String = "", onStarted: (String) -> Unit, onFinished: (Result) -> Unit, onError: (String) -> Unit) {
@@ -65,8 +81,8 @@ object AdvancedMediaDownloadEngine {
         catch (t: Throwable) { abandonOutput(context, output); throw t }
     }
 
-    private fun parseMasterVariants(base: String, text: String): List<Variant> { val lines = text.lines().map(String::trim); val result = mutableListOf<Variant>(); for (i in lines.indices) if (lines[i].startsWith("#EXT-X-STREAM-INF", true)) { val bw = Regex("(?:AVERAGE-BANDWIDTH|BANDWIDTH)=(\\d+)").find(lines[i])?.groupValues?.get(1)?.toLongOrNull() ?: 0L; val codecs = Regex("CODECS=\"([^\"]+)\"").find(lines[i])?.groupValues?.get(1).orEmpty(); val uri = lines.drop(i + 1).firstOrNull { it.isNotBlank() && !it.startsWith("#") } ?: continue; result += Variant(resolveUrl(base, uri), bw, codecs) }; return result }
-    private fun scoreVariant(v: Variant): Long = v.bandwidth + if (v.codecs.contains("avc", true) || v.codecs.contains("hev", true)) 1 else 0
+    private fun parseMasterVariants(base: String, text: String): List<Variant> { val lines = text.lines().map(String::trim); val result = mutableListOf<Variant>(); for (i in lines.indices) if (lines[i].startsWith("#EXT-X-STREAM-INF", true)) { val info = lines[i]; val bw = Regex("(?:AVERAGE-BANDWIDTH|BANDWIDTH)=(\\d+)").find(info)?.groupValues?.get(1)?.toLongOrNull() ?: 0L; val codecs = Regex("CODECS=\"([^\"]+)\"").find(info)?.groupValues?.get(1).orEmpty(); val resolution = Regex("RESOLUTION=(\\d+)x(\\d+)").find(info); val uri = lines.drop(i + 1).firstOrNull { it.isNotBlank() && !it.startsWith("#") } ?: continue; result += Variant(resolveUrl(base, uri), bw, codecs, resolution?.groupValues?.get(1)?.toIntOrNull() ?: 0, resolution?.groupValues?.get(2)?.toIntOrNull() ?: 0) }; return result }
+    private fun scoreVariant(v: Variant): Long = v.bandwidth + v.height.toLong() * 100000L + if (v.codecs.contains("avc", true) || v.codecs.contains("hev", true)) 1 else 0
     private fun parseHlsSegments(base: String, text: String): List<Segment> { val lines = text.lines().map(String::trim); val result = mutableListOf<Segment>(); var pendingRange: Pair<Long, Long>? = null; var mapAdded = false; for (line in lines) { if (line.startsWith("#EXT-X-MAP", true)) { val uri = Regex("URI=\"([^\"]+)\"").find(line)?.groupValues?.get(1); val range = Regex("BYTERANGE=\"(\\d+)(?:@(\\d+))?\"").find(line); if (uri != null && !mapAdded) { result += Segment(resolveUrl(base, uri), range?.groupValues?.get(2)?.toLongOrNull(), range?.groupValues?.get(1)?.toLongOrNull()); mapAdded = true } } else if (line.startsWith("#EXT-X-BYTERANGE", true)) { val parts = line.substringAfter(':').trim().split('@'); pendingRange = Pair(parts[0].toLong(), parts.getOrNull(1)?.toLongOrNull() ?: -1L) } else if (line.isNotBlank() && !line.startsWith("#")) { val range = pendingRange; result += Segment(resolveUrl(base, line), range?.second?.takeIf { it >= 0 }, range?.first); pendingRange = null } }; return result }
 
     private fun downloadDash(context: Context, sourceUrl: String, title: String, referer: String, cookies: String): Result {
