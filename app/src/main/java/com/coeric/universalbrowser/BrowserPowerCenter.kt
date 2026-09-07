@@ -82,11 +82,8 @@ object BrowserPowerCenter {
 
     private fun share(activity: Activity, url: String) {
         if (url.isBlank()) return
-        try {
-            activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser") }, "Share page"))
-        } catch (_: Throwable) {
-            Toast.makeText(activity, "No app available to share this page", Toast.LENGTH_SHORT).show()
-        }
+        try { activity.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, url); putExtra(Intent.EXTRA_TITLE, "Share from Universal Browser") }, "Share page")) }
+        catch (_: Throwable) { Toast.makeText(activity, "No app available to share this page", Toast.LENGTH_SHORT).show() }
     }
 
     private fun bookmark(activity: Activity, url: String) {
@@ -96,10 +93,10 @@ object BrowserPowerCenter {
 
     private fun showPrivacy(activity: Activity, session: GeckoSession) {
         val settings = session.settings
-        val items = arrayOf("Tracking protection: ${if (settings.useTrackingProtection) "On" else "Off"}", "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}", "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}", "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}", "Clear history", "Clear cookies", "Clear site data")
+        val items = arrayOf("Tracking protection: Enabled by browser security policy", "JavaScript: ${if (settings.allowJavascript) "On" else "Off"}", "HTTPS-only: ${if (BrowserSecurityController.isHttpsOnly(activity)) "On" else "Off"}", "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}", "Clear history", "Clear cookies", "Clear site data")
         AlertDialog.Builder(activity).setTitle("Privacy & protection").setItems(items) { _, which ->
             when (which) {
-                0 -> settings.useTrackingProtection = !settings.useTrackingProtection
+                0 -> Toast.makeText(activity, "Tracking protection is controlled by the browser security policy", Toast.LENGTH_SHORT).show()
                 1 -> settings.allowJavascript = !settings.allowJavascript
                 2 -> BrowserSecurityController.setHttpsOnly(activity, !BrowserSecurityController.isHttpsOnly(activity))
                 3 -> BrowserSecurityController.setBlockThirdPartyCookies(activity, !BrowserSecurityController.blockThirdPartyCookies(activity))
@@ -122,11 +119,8 @@ object BrowserPowerCenter {
         val stores = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
         val urls = arrayOf("https://addons.mozilla.org/android/", "https://chromewebstore.google.com/", "https://microsoftedge.microsoft.com/addons/", "https://addons.opera.com/")
         AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(stores) { _, which ->
-            try {
-                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which])))
-            } catch (_: Throwable) {
-                Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show()
-            }
+            try { activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which]))) }
+            catch (_: Throwable) { Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show() }
         }.setNegativeButton("Close", null).show()
     }
 }
