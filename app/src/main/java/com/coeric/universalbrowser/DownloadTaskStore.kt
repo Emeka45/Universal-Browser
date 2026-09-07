@@ -15,6 +15,7 @@ class DownloadTaskStore(context: Context) {
         val total: Long,
         val createdAt: Long,
         val referer: String = "",
+        val cookies: String = "",
         val localUri: String? = null,
         val mimeType: String = "application/octet-stream",
         val tempPath: String? = null
@@ -36,6 +37,7 @@ class DownloadTaskStore(context: Context) {
         bytes: Long? = null,
         total: Long? = null,
         referer: String? = null,
+        cookies: String? = null,
         localUri: String? = null,
         mimeType: String? = null,
         tempPath: String? = null,
@@ -49,6 +51,7 @@ class DownloadTaskStore(context: Context) {
             bytes = bytes ?: old.bytes,
             total = total ?: old.total,
             referer = referer ?: old.referer,
+            cookies = cookies ?: old.cookies,
             localUri = localUri ?: old.localUri,
             mimeType = mimeType ?: old.mimeType,
             tempPath = if (clearTempPath) null else tempPath ?: old.tempPath
@@ -66,17 +69,10 @@ class DownloadTaskStore(context: Context) {
                 for (i in 0 until json.length()) {
                     val o = json.getJSONObject(i)
                     add(Task(
-                        o.optString("id"),
-                        o.optString("url"),
-                        o.optString("title"),
-                        o.optString("state"),
-                        o.optLong("bytes"),
-                        o.optLong("total"),
-                        o.optLong("createdAt"),
-                        o.optString("referer"),
-                        o.optString("localUri").takeIf { it.isNotBlank() },
-                        o.optString("mimeType", "application/octet-stream"),
-                        o.optString("tempPath").takeIf { it.isNotBlank() }
+                        o.optString("id"), o.optString("url"), o.optString("title"), o.optString("state"),
+                        o.optLong("bytes"), o.optLong("total"), o.optLong("createdAt"), o.optString("referer"),
+                        o.optString("cookies"), o.optString("localUri").takeIf { it.isNotBlank() },
+                        o.optString("mimeType", "application/octet-stream"), o.optString("tempPath").takeIf { it.isNotBlank() }
                     ))
                 }
             }
@@ -90,7 +86,7 @@ class DownloadTaskStore(context: Context) {
             tasks.take(200).forEach { t -> put(JSONObject().apply {
                 put("id", t.id); put("url", t.url); put("title", t.title); put("state", t.state)
                 put("bytes", t.bytes); put("total", t.total); put("createdAt", t.createdAt)
-                put("referer", t.referer); t.localUri?.let { put("localUri", it) }; put("mimeType", t.mimeType)
+                put("referer", t.referer); put("cookies", t.cookies); t.localUri?.let { put("localUri", it) }; put("mimeType", t.mimeType)
                 t.tempPath?.let { put("tempPath", it) }
             }) }
         }.toString()).apply()
