@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -36,6 +37,10 @@ class MainActivity : Activity() {
     private val muted = Color.rgb(105, 103, 123)
     private val surface = Color.rgb(247, 246, 251)
 
+    private val systemBackCallback = android.window.OnBackInvokedCallback {
+        handleSystemBack()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
@@ -56,11 +61,33 @@ class MainActivity : Activity() {
         root.addView(browserView, LinearLayout.LayoutParams(-1, 0, 1f))
         browserView.visibility = View.GONE
         setContentView(root)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                systemBackCallback
+            )
+        }
         restoreTabs()
     }
 
-    @Suppress("DEPRECATION") override fun onBackPressed() {
-        when { canGoBack -> activeSession()?.goBack(); homePanel.visibility == View.VISIBLE -> super.onBackPressed(); else -> showHome() }
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        handleSystemBack()
+    }
+
+    override fun onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            onBackInvokedDispatcher.unregisterOnBackInvokedCallback(systemBackCallback)
+        }
+        super.onDestroy()
+    }
+
+    private fun handleSystemBack() {
+        when {
+            canGoBack -> activeSession()?.goBack()
+            homePanel.visibility == View.VISIBLE -> finish()
+            else -> showHome()
+        }
     }
 
     private fun restoreTabs() {
