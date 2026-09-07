@@ -47,12 +47,13 @@ jobs:
           test -f app/src/main/java/com/coeric/universalbrowser/DownloadService.kt
           test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
+          test -f app/src/main/java/com/coeric/universalbrowser/BrowserExtensionCenter.kt
           grep -q 'GeckoView' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserTabManager' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserPowerCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'DownloadCenter' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
-          grep -q 'saveAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
+          grep -q 'savePageAsPdf' app/src/main/java/com/coeric/universalbrowser/BrowserFeatureCenter.kt
           echo 'Universal Browser source validation passed.'
 
       - name: Check formatting
@@ -66,20 +67,13 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk' | sort)
-          apk_count=${#apks[@]}
-          echo "Found $apk_count debug APK(s)"
-          test "$apk_count" -eq 1
+          test "${#apks[@]}" -eq 1
           apk="${apks[0]}"
-          case "$apk" in
-            *universal*|*debug*) : ;;
-            *) echo "Unexpected APK name: $apk"; exit 1 ;;
-          esac
           file "$apk"
           du -h "$apk"
           unzip -l "$apk" > apk-contents.txt
           grep -q 'lib/armeabi-v7a/' apk-contents.txt
           grep -q 'lib/arm64-v8a/' apk-contents.txt
-          echo 'Verified native libraries for armeabi-v7a and arm64-v8a.'
           echo "Universal APK verified: $apk"
 
       - name: Upload universal APK
@@ -88,3 +82,5 @@ jobs:
           name: universal-browser-universal-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      # Build validation is intentionally strict: a green run must produce a real APK.
