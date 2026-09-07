@@ -10,8 +10,8 @@ android {
         applicationId = "com.coeric.universalbrowser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.7.0"
+        versionCode = 8
+        versionName = "1.0.0"
 
         // One Universal Browser APK carrying both low-end ARMv7 and modern ARM64 native libraries.
         // Android selects the correct ABI at install/runtime; this is not two different browser products.
@@ -25,6 +25,15 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            // Keep release behavior stable for the first public device-validation build.
+            // Shrinking/obfuscation can be enabled later once the production mapping rules are validated.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 
