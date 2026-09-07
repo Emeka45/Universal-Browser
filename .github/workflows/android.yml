@@ -47,7 +47,10 @@ jobs:
           test -f app/src/main/java/com/coeric/universalbrowser/DownloadService.kt
           test -f app/src/main/java/com/coeric/universalbrowser/TabStateStore.kt
           test -f app/src/main/java/com/coeric/universalbrowser/UniversalBrowserApp.kt
-          test -f app/src/main/java/com/coeric/universalbrowser/BrowserExtensionCenter.kt
+          test ! -f app/src/main/java/com/coeric/universalbrowser/BrowserExtensionCenter.kt
+          test ! -f app/src/main/java/com/coeric/universalbrowser/ExtensionCompatibilityEngine.kt
+          test ! -f app/src/main/java/com/coeric/universalbrowser/ExtensionInstallActivity.kt
+          test ! -d app/src/main/assets/media-detector
           grep -q 'GeckoView' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserTabManager' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
           grep -q 'BrowserPermissionController.attach' app/src/main/java/com/coeric/universalbrowser/MainActivity.kt
