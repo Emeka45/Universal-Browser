@@ -1,19 +1,16 @@
 # Universal Browser
 
-A clean, GeckoView-based Android browser built around straightforward web browsing.
+A clean, Android-first web browser built around GeckoView.
 
-## Direction
-- Android-first browser
-- GeckoView web engine
-- Fast, dependable web navigation
+## Features
+- Fast web navigation
 - Normal and private tabs
 - Downloads
-- Practical privacy controls
-- No browser extension system
-- No extension web-store integration
-- No media WebExtension or media-extraction engine
-- No autoplay authorization prompts
-- Monetization kept separate from the browser core
+- Practical privacy and site controls
+- Save pages as PDF
+- Print and page capture
+- QR code scanning
+- Optional in-app monetization
 
 ## Project status
-Active browser build and device validation.
+The browser core is actively maintained and validated through the Android build pipeline.
