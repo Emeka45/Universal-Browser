@@ -1,15 +1,19 @@
 # Universal Browser
 
-A lightweight Android-first browser built as a clean, modular project. The browser identity is the **U** logo.
+A clean, GeckoView-based Android browser built around straightforward web browsing.
 
 ## Direction
-- Lightweight native Android shell
-- No Chromium source tree or Chromium build system
-- Fast startup and low memory overhead
-- Modern web navigation
-- Modular architecture for future extension support
-- Private, user-controlled browsing features
-- Monetization layer kept separate from the browser core
+- Android-first browser
+- GeckoView web engine
+- Fast, dependable web navigation
+- Normal and private tabs
+- Downloads
+- Practical privacy controls
+- No browser extension system
+- No extension web-store integration
+- No media WebExtension or media-extraction engine
+- No autoplay authorization prompts
+- Monetization kept separate from the browser core
 
 ## Project status
-Foundation build in progress.
+Active browser build and device validation.
