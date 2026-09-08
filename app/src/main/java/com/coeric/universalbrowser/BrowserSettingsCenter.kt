@@ -2,8 +2,6 @@ package com.coeric.universalbrowser
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.Intent
-import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.widget.Toast
@@ -29,7 +27,6 @@ object BrowserSettingsCenter {
             "Block third-party cookies: ${if (BrowserSecurityController.blockThirdPartyCookies(activity)) "On" else "Off"}",
             "Clear browsing data",
             "Downloads",
-            "Extension web stores",
             "About Universal Browser"
         )
         AlertDialog.Builder(activity).setTitle("Universal Settings").setItems(entries) { _, which ->
@@ -48,8 +45,10 @@ object BrowserSettingsCenter {
                 }
                 3 -> clearData(activity)
                 4 -> DownloadCenter.show(activity)
-                5 -> showStores(activity)
-                6 -> AlertDialog.Builder(activity).setTitle("Universal Browser").setMessage("GeckoView-based • Android Go friendly • privacy controls • WebExtensions • no bundled AI model").setPositiveButton("OK", null).show()
+                5 -> AlertDialog.Builder(activity)
+                    .setTitle("Universal Browser")
+                    .setMessage("GeckoView-based • Android-friendly • private browsing • downloads • privacy controls")
+                    .setPositiveButton("OK", null).show()
             }
         }.setNegativeButton("Close", null).show()
     }
@@ -84,22 +83,5 @@ object BrowserSettingsCenter {
                 try { WebStorage.getInstance().deleteAllData() } catch (_: Throwable) { }
                 Toast.makeText(activity, "Browsing data cleared", Toast.LENGTH_SHORT).show()
             }.show()
-    }
-
-    private fun showStores(activity: Activity) {
-        val names = arrayOf("Firefox Add-ons", "Chrome Web Store", "Microsoft Edge Add-ons", "Opera Add-ons")
-        val urls = arrayOf(
-            "https://addons.mozilla.org/android/",
-            "https://chromewebstore.google.com/",
-            "https://microsoftedge.microsoft.com/addons/",
-            "https://addons.opera.com/"
-        )
-        AlertDialog.Builder(activity).setTitle("Extension web stores").setItems(names) { _, which ->
-            try {
-                activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(urls[which])))
-            } catch (_: Throwable) {
-                Toast.makeText(activity, "No browser available to open this store", Toast.LENGTH_SHORT).show()
-            }
-        }.setNegativeButton("Close", null).show()
     }
 }
