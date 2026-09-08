@@ -43,6 +43,13 @@ object BrowserPermissionController {
             }
 
             override fun onContentPermissionRequest(session: GeckoSession, perm: GeckoSession.PermissionDelegate.ContentPermission): GeckoResult<Int>? {
+                // Autoplay is a browser behavior, not a user permission. Never interrupt browsing
+                // with an authorization dialog for it. GeckoView receives an immediate decision.
+                if (perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE ||
+                    perm.permission == GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE) {
+                    return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
+                }
+
                 if (session.settings.usePrivateMode) return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_DENY)
                 val origin = originOf(perm.uri); val permissionKey = perm.permission.toString(); val prefs = activity.getSharedPreferences(PREFS, 0)
                 if (prefs.getBoolean(ALLOW + origin + permissionKey, false)) return GeckoResult.fromValue(GeckoSession.PermissionDelegate.ContentPermission.VALUE_ALLOW)
@@ -118,7 +125,6 @@ object BrowserPermissionController {
         GeckoSession.PermissionDelegate.PERMISSION_DESKTOP_NOTIFICATION -> "notifications"
         GeckoSession.PermissionDelegate.PERMISSION_PERSISTENT_STORAGE -> "persistent storage"
         GeckoSession.PermissionDelegate.PERMISSION_TRACKING -> "tracking"
-        GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_AUDIBLE, GeckoSession.PermissionDelegate.PERMISSION_AUTOPLAY_INAUDIBLE -> "autoplay"
         else -> "additional browser access"
     }
     private fun originOf(uri: String): String = try { val u = android.net.Uri.parse(uri); u.scheme.orEmpty() + "://" + u.host.orEmpty() } catch (_: Throwable) { uri.take(120) }
